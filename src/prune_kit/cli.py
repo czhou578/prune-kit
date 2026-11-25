@@ -165,7 +165,7 @@ def cmd_probe(a) -> int:
         if not a.machine:
             raise probe.ProbeError("the window file of a probe needs --machine")
         plan = probe.plan(facts, flow, probe.load_profile(facts.model_type), window.load_machine(a.machine),
-                          a.port, a.tokens, a.turns, a.rank, a.gates)
+                          a.port, a.tokens, a.turns, a.rank, a.gates, a.flags, dict(e.split("=", 1) for e in a.env))
         path = probe.write(facts, flow, plan)
     except (ModelNotFound, WeightsError, workflow.WorkflowError, window.WindowError, probe.ProbeError, OSError) as e:
         print(f"prune-kit: {e}", file=sys.stderr)
@@ -272,6 +272,8 @@ def parser() -> argparse.ArgumentParser:
     o.add_argument("--rank", metavar="FILE", help="the rank of a full capture: no sample capture in the window")
     o.add_argument("--gates", nargs="+", default=[], choices=("tasks", "speed", "judge"),
                    help="each point also runs these: the tool-call suite, the decode speed, the turns for the judge")
+    o.add_argument("--flags", default="", metavar="TEXT", help="more flags for each test server, as one text")
+    o.add_argument("--env", action="append", default=[], metavar="NAME=VALUE", help="one more variable for each server")
     o.add_argument("--report", action="store_true", help="print the result of the probe that ran; write no file")
     o.add_argument("--json", action="store_true", help="--report: print the result as JSON")
     o.add_argument("--port", type=int, default=8890, help="the test port (default 8890); never a live port")
