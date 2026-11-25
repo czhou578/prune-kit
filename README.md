@@ -22,11 +22,11 @@ stages. Stage III, the measurements, is not started: each of its runs needs a wi
 | `prune-kit preflight MODEL`: the quick check, from the model files only | Built for safetensors checkpoints, EXL3 included |
 | The workflow file, and `prune-kit preflight MODEL --workflow FILE` | Built |
 | `prune-kit data FILE`: the sessions of a workflow, the held-out split, the secret pass | Built |
-| `prune-kit capture MODEL` and `prune-kit rank CAPTURE`: the routed experts of the workflow, and their order | Built. The capture needs a server with its capture flag |
+| `prune-kit capture MODEL` and `prune-kit rank CAPTURE`: the routed experts of the workflow, and their order | Built. The capture ran on a real capture server in the probe |
 | `prune-kit build MODEL`: the pruned folder, and its check against the source | Built for safetensors checkpoints. Not for EXL3 |
 | `prune-kit gate`: the replay gates `nll` and `tools`: record, score, compare | Built |
-| `prune-kit window`: test servers in one window, with the restore of the workers | Built, with dry-run tests. No real window ran yet |
-| `prune-kit probe MODEL`: the window file of a probe, and its report | Built for the Qwen model type. No probe ran yet |
+| `prune-kit window`: test servers in one window, with the restore of the workers | Built. Two real windows ran on 2026-11-25 |
+| `prune-kit probe MODEL`: the window file of a probe, and its report | Built for the Qwen model type. One probe of the full Qwen ran |
 | The gates `tasks`, `speed` and `memory`, and the verdict of a point in the report | Built. No window ran them yet |
 | `prune-kit judge`: the gate `judge`, with the blind page for your own review | Built. No real judge run yet |
 
@@ -209,6 +209,13 @@ The rules of a window:
 - A boot that is not healthy in 15 minutes goes down. After two failed boots in a row, no more point boots.
 - A watch reads the available memory and the free swap during each client. Below a limit, it stops the client.
 - The window always ends with the restore of each worker that it stopped. Exit code 3 means that the restore failed.
+- The runner stops the whole process group of a test server, and it waits until the health URL is silent. A
+  server that still answers would look like the next point.
+- A window file can list folders under `release`. The runner asks the kernel to drop their cached pages before
+  each boot and before the restore. On a machine with unified memory, a server start with CUDA needs free memory,
+  and the page cache of large folders can make the start fail. The window file of a probe has this list.
+- A start command that fails gets its second try after one minute.
+- Each command of the machine file and of the window file runs with bash.
 
 Start a real window in tmux under `job run`, with a `--desc` and a `--log`, so that it shows on the jobs page.
 
