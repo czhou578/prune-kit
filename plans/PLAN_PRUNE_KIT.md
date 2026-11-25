@@ -346,7 +346,7 @@ one pull request holds at most 400 lines. The line counts are the real counts.
 | 10 | The replay scorer: record, score, compare, `prune-kit gate`, and the gate C script | 393 |
 | 11 | The window runner, the machine file and the window file, with dry-run tests | 381 |
 | 11b | `prune-kit window`, the dry run, and the example files | 139 |
-| 12 | The test of gate C with no server, and this status | 50 |
+| 12 | The test of gate C with no server, and this status | 63 |
 
 What stage II did not prove, because the proof needs a window:
 
