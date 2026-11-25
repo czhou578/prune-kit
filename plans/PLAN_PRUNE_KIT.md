@@ -177,31 +177,35 @@ refuses a message list with no user message, and the DeepSeek template accepts i
 
 The preflight reads `config.json` and the headers of the weight files. It loads no weights and needs no window.
 
-**What it prints.** This is the output for Inkling-2-Mini. I computed it by hand from the header on 2026-11-24, and
-the tool must give the same numbers.
+**What it prints.** This is the output of `prune-kit preflight thinkingmachines/Inkling-2-Mini --k 120 112 104 96`
+on 2026-11-24. The tool gives the cut table that I first computed by hand from the header.
 
 ```
-model     thinkingmachines/Inkling-2-Mini (inkling2_loop): MoE
-layers    24; layers 6 to 17 run 3 times        experts   128 per layer, 8 per token
-weights   18.18 GiB; routed experts 14.59 GiB (80%); 4.86 MiB per expert
+model     ~/.cache/huggingface/hub/models--thinkingmachines--Inkling-2-Mini/snapshots/ed40e7da…
+type      inkling2_loop: MoE, stacked layout, NVFP4
+weights   18.78 GiB in the folder; draft 0.59 GiB
+experts   128 per layer, 8 per token, in 24 layers; 4.86 MiB per expert
+routed    14.59 GiB (78% of the weights)
 
-K 120     -0.91 GiB   (-5%)
-K 112     -1.82 GiB   (-10%)
-K 104     -2.74 GiB   (-15%)
-K  96     -3.65 GiB   (-20%)
-
-other levers
-  KV pin  20 GiB at 262,144 tokens with the draft; a smaller context can free more than the prune
+cut       freed        of the weights
+K 120      0.91 GiB    5%
+K 112      1.82 GiB    10%
+K 104      2.74 GiB    15%
+K 96       3.65 GiB    19%
 
 can the pipeline run?
-  routed experts            yes
-  prune adapter             no: st_moe does not know the scale tensors of this layout yet
-  mask                      possible: the router has a bias
-  capture                   not known: the server is a Docker image with its own model code
-  draft model               dense, in its own file: no expert count to keep; test the acceptance
-  loop                      a core layer serves 3 passes: its counts are the sum of the passes
-  verdict                   GO WITH WORK: one adapter and one capture check
+  routed experts  yes      128 per layer, 8 per token
+  prune tool      no       prune-kit has no prune for the stacked layout yet
+  capture         unknown  not proven for this model type: test the capture flag of its server
+  mask            info     possible: the router has a bias
+  draft model     info     dense: no expert count to keep; test its acceptance
+  loop            info     layers 6 to 17 run 3 times: the counts of such a layer are the sum of the passes
+  memory          info     the full model loads 18.78 GiB, and 4.1 GiB is available: needs a window
+verdict   GO WITH WORK: prune tool, capture
 ```
+
+The files do not hold the other levers. For this model, the KV pin is one: 20 GiB at 262,144 tokens with the
+draft, so a smaller context can free more than the prune (`model-benchmarks`).
 
 **The memory model.** The peak of a server is the loaded weights, plus the KV pin, plus the overhead of the server.
 The weights that a point frees are exact. The overhead comes from the profile of the adapter, and the probe
