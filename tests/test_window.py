@@ -1,8 +1,9 @@
 from datetime import datetime, timedelta
+from pathlib import Path
 
 import pytest
 
-from prune_kit import window
+from prune_kit import cli, window
 
 T0 = datetime(2026, 11, 28, 22, 0)   # a Saturday
 at = lambda minutes: T0 + timedelta(minutes=minutes)
@@ -145,3 +146,20 @@ def test_the_up_hours_and_the_files(tmp_path):
         window.load_machine(path)
     with pytest.raises(window.WindowError, match="cannot read"):
         window.load_machine(tmp_path / "none.yml")
+
+
+def test_the_dry_run_of_the_command_prints_each_command_and_runs_none(capsys):
+    examples = Path(__file__).parent.parent / "examples"
+    args = ["window", str(examples / "window-qwen-score.yml"), "--machine", str(examples / "machine-spark.yml"),
+            "--start-after", "2099-01-03 22:00", "--boot-by", "2099-01-04 01:00", "--dry-run"]
+    assert cli.main([*args, "--restore-at", "2099-01-04 03:00", "--stop", "qwen"]) == 0
+    out = capsys.readouterr().out
+    order = ["stop the worker qwen", "dry run: kill -TERM", "boot full", "dry run: vllm serve unsloth/",
+             "dry run: prune-kit gate --record", "boot k208", "dry run: vllm serve runs/qwen-k208",
+             "restore the worker qwen", "dry run: python3", "RESTORE DONE: the worker qwen"]
+    places = [out.index(text) for text in order]
+    assert places == sorted(places) and out.count("dry run: prune-kit gate --score") == 2 and "deepseek" not in out
+    assert cli.main([*args, "--restore-at", "2099-01-05 04:50", "--stop", "deepseek"]) == 1   # a Monday morning
+    assert "the worker deepseek must be up mon 05:00 to 16:00" in capsys.readouterr().out
+    assert cli.main([*args, "--restore-at", "soon"]) == 2
+    assert cli.main(["window", "none.yml", *args[2:], "--restore-at", "2099-01-04 03:00"]) == 2
