@@ -1,13 +1,13 @@
-"""Command line: prune-kit stages | preflight | data | build."""
+"""Command line: prune-kit stages | preflight | data | capture | rank | build."""
 
 import argparse
 import json
 import sys
 from pathlib import Path
 
-from . import __version__, preflight, sessions, sources, st_moe, stages, workflow
+from . import __version__, capture, preflight, rank, sessions, sources, st_moe, stages, workflow
 from .facts import inspect
-from .resolve import ModelNotFound, resolve
+from .resolve import ModelNotFound, resolve, slug
 from .weights import FormatError, WeightsError
 
 
@@ -49,6 +49,40 @@ def cmd_data(a) -> int:
     return 0 if r["ok"] else 1
 
 
+def cmd_capture(a) -> int:
+    """Exit code 0: each segment has its counts. 1: a segment failed. 2: a fault before the first request."""
+    try:
+        flow, folder = workflow.load(a.workflow), resolve(a.model, a.hub)
+        experts = inspect(folder).max_experts
+        data = sessions.load(flow.folder / "sessions.jsonl")
+        tools = json.loads(t.read_text()) if (t := flow.folder / "tools.json").exists() else None
+        tools = tools.get("tools") if isinstance(tools, dict) else tools
+        served = a.served or capture.post(a.base_url, "/v1/models", None)["data"][0]["id"]
+    except (ModelNotFound, WeightsError, workflow.WorkflowError, OSError, ValueError) as e:
+        print(f"prune-kit: {e}", file=sys.stderr)
+        return 2
+    out = Path(a.out or Path("runs") / slug(folder) / flow.name / "capture.jsonl")
+    failed = capture.run(a.base_url, served, data, tools, out, experts, a.limit, json.loads(a.body), a.generate)
+    print(f"capture   {out}" + (f": {failed} segments failed; start the command again" if failed else ""))
+    return 1 if failed else 0
+
+
+def cmd_rank(a) -> int:
+    """Exit code 0: the rank file is written. 2: the capture cannot give a rank."""
+    try:
+        with open(a.capture) as f:
+            rows = [json.loads(line) for line in f]
+        ranked = rank.rank(rows)
+    except (rank.RankError, OSError, ValueError) as e:
+        print(f"prune-kit: {e}", file=sys.stderr)
+        return 2
+    out = Path(a.out or Path(a.capture).with_name("rank.json"))
+    out.write_text(json.dumps(ranked))
+    ks = a.k or preflight.default_ks(len(ranked["layers"]["0"]))
+    print(rank.text(ranked, ks, rank.overlap(rows, ks) if ranked["segments"] > 1 else None) + f"\nrank      {out}")
+    return 0
+
+
 def cmd_build(a) -> int:
     """Exit code 0: the pruned folder is equal to its source in each kept tensor. 2: a fault."""
     try:
@@ -83,6 +117,22 @@ def parser() -> argparse.ArgumentParser:
     d.add_argument("workflow", metavar="FILE", help="a workflow file")
     d.add_argument("--stats", action="store_true", help="read the sessions that exist; build nothing")
     d.set_defaults(run=cmd_data)
+    c = sub.add_parser("capture", help="count the routed experts of the calibration sessions on a capture server")
+    c.add_argument("model", help="the model of the server: a folder, or a name in a local cache")
+    c.add_argument("--workflow", required=True, metavar="FILE", help="the workflow file: its data folder is the input")
+    c.add_argument("--base-url", required=True, metavar="URL", help="the server, for example http://127.0.0.1:8890")
+    c.add_argument("--served", metavar="NAME", help="the model name of the server (default: its first model)")
+    c.add_argument("--out", metavar="FILE", help="the counts (default: runs/<model>/<workflow>/capture.jsonl)")
+    c.add_argument("--limit", type=int, metavar="N", help="capture the first N segments only")
+    c.add_argument("--generate", type=int, default=0, metavar="N", help="also count the routing of N new tokens")
+    c.add_argument("--body", default="{}", metavar="JSON", help="more keys for each request, as a JSON mapping")
+    c.add_argument("--hub", action="append", default=[], metavar="DIR", help="one more cache folder to search")
+    c.set_defaults(run=cmd_capture)
+    r = sub.add_parser("rank", help="order the experts of each layer by their use in a capture")
+    r.add_argument("capture", metavar="CAPTURE", help="the counts of prune-kit capture")
+    r.add_argument("--out", metavar="FILE", help="the rank file (default: rank.json beside the capture)")
+    r.add_argument("--k", type=int, nargs="+", metavar="K", help="the cuts of the table")
+    r.set_defaults(run=cmd_rank)
     b = sub.add_parser("build", help="write a pruned copy of a model, and compare it with its source")
     b.add_argument("model", help="the full model: a folder, or a name in a local cache")
     b.add_argument("--out", required=True, metavar="DIR", help="the pruned folder: it must not exist for a build")
