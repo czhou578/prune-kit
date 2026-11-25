@@ -26,8 +26,8 @@ stages. Stage III, the measurements, is not started: each of its runs needs a wi
 | `prune-kit build MODEL`: the pruned folder, and its check against the source | Built for safetensors checkpoints. Not for EXL3 |
 | `prune-kit gate`: the replay gates `nll` and `tools`: record, score, compare | Built |
 | `prune-kit window`: test servers in one window, with the restore of the workers | Built, with dry-run tests. No real window ran yet |
-| `prune-kit probe MODEL`: the window file of a probe | Built for the Qwen model type. No probe ran yet |
-| The report of a probe, the gates `tasks`, `judge`, `speed` and `memory`, the decision report | Not built: stage III |
+| `prune-kit probe MODEL`: the window file of a probe, and its report | Built for the Qwen model type. No probe ran yet |
+| The gates `tasks`, `judge`, `speed` and `memory`, the decision report | Not built: stage III |
 
 ## Scope
 
@@ -228,6 +228,23 @@ uv run prune-kit probe unsloth/Qwen3.6-35B-A3B-NVFP4-Fast --workflow examples/co
 - The serve command comes from the profile of the model type, in `src/prune_kit/profiles/`. A model type with no
   profile gets an error. Qwen3.5 and Qwen3.6 MoE have a profile.
 - The command prints the `prune-kit window` command for the file. Run the dry run first.
+
+After the window, `--report` prints the result. It needs no machine file.
+
+```bash
+uv run prune-kit probe unsloth/Qwen3.6-35B-A3B-NVFP4-Fast --workflow examples/coding-fast-route.yml --report
+```
+
+- **The cost of each cut:** the NLL change against the full model of the same window, and the weights that the cut
+  frees.
+- **The band:** 20 turns give much noise. The band holds 90% of the results of new samples of the same turns. A
+  cut is `pass` or `fail` only when its whole band is on one side of the limit. Each other cut is `near the limit`.
+- **The estimate:** a line through the measured cuts gives the deepest K that holds the `nll` gate. The estimate
+  is not a gate result.
+- **The memory:** the peak of the full model in the window, from the results file of the window.
+
+On the gate files of the Qwen prune, the report gives the numbers of the record: +4.15% at K 208 and +8.04% at
+K 192. A test compares them.
 
 ## Tests
 

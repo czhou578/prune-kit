@@ -148,9 +148,15 @@ def cmd_window(a) -> int:
 
 
 def cmd_probe(a) -> int:
-    """Exit code 0: the window file of the probe is written. 2: a fault."""
+    """Exit code 0: the window file of the probe is written, or the report is printed. 2: a fault."""
     try:
         flow, facts = workflow.load(a.workflow), inspect(resolve(a.model, a.hub))
+        if a.report:
+            r = probe.report(facts, flow)
+            print(json.dumps(r, indent=2) if a.json else probe.text(r))
+            return 0
+        if not a.machine:
+            raise probe.ProbeError("the window file of a probe needs --machine")
         plan = probe.plan(facts, flow, probe.load_profile(facts.model_type), window.load_machine(a.machine),
                           a.port, a.tokens, a.turns)
         path = probe.write(facts, flow, plan)
@@ -238,7 +244,9 @@ def parser() -> argparse.ArgumentParser:
     o = sub.add_parser("probe", help="write the window file of a probe: a sample capture and two or three cuts")
     o.add_argument("model", help="the full model: a folder, or a name in a local cache")
     o.add_argument("--workflow", required=True, metavar="FILE", help="the workflow file: its data, and its points")
-    o.add_argument("--machine", required=True, metavar="FILE", help="the machine file: the path of the server tools")
+    o.add_argument("--machine", metavar="FILE", help="the machine file: the path of the server tools")
+    o.add_argument("--report", action="store_true", help="print the result of the probe that ran; write no file")
+    o.add_argument("--json", action="store_true", help="--report: print the result as JSON")
     o.add_argument("--port", type=int, default=8890, help="the test port (default 8890); never a live port")
     o.add_argument("--tokens", type=int, default=400_000, help="the prompt tokens of the sample capture")
     o.add_argument("--turns", type=int, default=20, help="the held-out turns that each point scores")
