@@ -12,8 +12,8 @@ One pipeline that prunes a local model for one workflow.
 
 ## Status
 
-Stage I of [the plan](plans/PLAN_PRUNE_KIT.md) is built: the blueprint and the quick check. Stage II, the shared
-stages, is in work. Stage III is not started.
+Stages I and II of [the plan](plans/PLAN_PRUNE_KIT.md) are built: the blueprint, the quick check, and the shared
+stages. Stage III, the measurements, is not started: each of its runs needs a window.
 
 | Part | State |
 |---|---|
@@ -216,6 +216,14 @@ Start a real window in tmux under `job run`, with a `--desc` and a `--log`, so t
 uv run pytest -q
 ```
 
-The tests use small synthetic files in temporary folders. They load no model. `tests/test_gate_a.py` reads the
-headers of the real checkpoints of this machine and compares the preflight with the recorded numbers of the two
-prunes. Each of its tests is skipped where its checkpoint does not exist.
+The tests use small synthetic files in temporary folders. They load no model, send no request, and stop no
+server. Some tests read files of this machine, and each of them is skipped where its files do not exist:
+
+- `tests/test_gate_a.py` reads the headers of the real checkpoints and compares the preflight with the recorded
+  numbers of the two prunes.
+- `tests/test_rank.py` compares the rank of the capture of the Qwen prune with the rank file of the record.
+- `tests/test_gate_c.py` compares the requests of the replay scorer with the requests of the scorer of the record.
+
+Two gates of the plan are scripts, because they are long runs. Start each one under `job run`, as its first lines
+show: `scripts/gate_b.sh` (about 19 GiB of disk for some minutes) and `scripts/gate_c.sh` (requests to the live Qwen
+for about 20 minutes).
