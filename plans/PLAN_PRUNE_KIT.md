@@ -1,8 +1,8 @@
 # Plan: prune-kit, one pipeline that prunes a local model for one workflow
 
-Status: 2026-11-25. Stage I (§6) is built and merged, and gate A (§7) passes for Qwen, Inkling and DeepSeek. Stage
-II is built in ten pull requests, with no window: gates B and C pass (§7). Stage III is not started: each of its
-runs needs a window and your approval. The project name is a placeholder.
+Status: 2026-11-25. Stages I and II are built and merged, and gates A, B and C pass (§7). Stage III is in work: the
+probe, the gates `tasks`, `speed` and `memory`, and the judge are built, and two real windows ran on the full Qwen
+(§6). The third model and gate D are not started. The project name is a placeholder.
 
 ## In simple words
 
@@ -357,13 +357,47 @@ What stage II did not prove, because the proof needs a window:
 - prune-kit has no new dependency for the capture: it reads the `.npy` array of the server with the standard
   library. PyYAML is the only dependency.
 
-**Stage III: the measurements. Each run needs a window.**
+**Stage III: the measurements. Each run needs a window.** In work since 2026-11-25. The line counts are the real
+counts.
 
-| PR | Content | Lines |
+| PR | Content | Lines | State |
+|---|---|---|---|
+| 12 | `prune-kit probe`: the Qwen profile, the window file of a probe, a sample capture, the results of a window | 280 | Built |
+| 12b | The probe report: the cost of each cut, the band, the line. The runner uses bash | 236 | Built |
+| 13 | The gates `tasks`, `speed` and `memory`, the verdict of a point, the full gate with the probe commands | 287 | Built. No window ran these gates |
+| 13b | `prune-kit judge`: blind pairs, the sign test, the blind page | 249 | Built. No real judge run |
+| 13c | The window runner: the stop of the whole server group, the cache release, a fast second try | 156 | Built, and proven in window 2 |
+| 14 | The third model: its profile, the missing adapter parts, and gate D | | Not started |
+
+**The two real windows of 2026-11-25.** Both stopped Qwen and DeepSeek, because the full Qwen does not fit beside
+DeepSeek: its peak is 29 to 31 GiB, and about 32 GiB is free with Qwen down. The files are in
+`runs/probe-2026-11-25-qwen` and `runs/probe-2026-11-25-qwen-2`.
+
+| | Window 1 (10:37 to 11:15) | Window 2 (11:17 to 11:36) |
 |---|---|---|
-| 12 | `prune-kit probe`: the sample, the points, the line, the report | 350 |
-| 13 | The gates `tasks`, `speed` and `memory`, the judge, and the report with the blind page | 400 |
-| 14 | The third model: its profile, the missing adapter parts, and gate D | 300 |
+| Runner | The first real run. Two faults needed help by hand | The fixed runner. No help, exit code 0 |
+| Capture | 9 segments, 405,534 tokens, 40 layers, no error | The capture and the turns of window 1 |
+| K 224 | Lost: the old server still answered at its boot | +5.23% NLL (band +2.34% to +8.46%): near the limit |
+| K 208 | +8.32% (band +3.64% to +13.26%): fail | |
+| K 192 | +10.66% (band +4.12% to +16.49%): fail | |
+| Peak of the full model | 28.9 GiB | 29.2 GiB |
+| Restore | DeepSeek at once. Qwen at the second start, by hand | Both at the first try |
+
+What the windows proved, and what they found:
+
+- **Proven:** the capture client on a real capture server, the build of three cuts that a server loads, the scorer in
+  a window, and the stop and the restore of both workers with the commands of `examples/machine-spark.yml`.
+- **The probe is more careful than the full gate.** The full gate of the record gave +4.15% at K 208 and +8.04% at
+  K 192, with 60 turns and the full rank. Both values are inside the band of the probe. The verdict is the same:
+  K 208 and K 192 fail, and the gate holds only at about K 228 to K 234 (the record: above about K 224).
+- **The sample rank is good.** At K 208 it removes 4.07% of the routing of the full capture, and the full rank removes
+  3.74%. 87% of its dropped experts are the same. So most of the difference comes from the 20 turns.
+- **Fault 1:** a vLLM server that loads its weights ignores SIGTERM, and a server that stops still answers for some
+  seconds. The runner now stops the whole process group and waits until the health URL is silent.
+- **Fault 2:** the start of Qwen failed with a CUDA out-of-memory error, because the page cache of the cut folders
+  held 25 GiB. The runner now drops the cached pages of its folders before each boot and before the restore.
+- **Fault 3:** the stop command of Qwen was not valid in `sh`. The runner now uses bash. The first try of window 1
+  failed safely for this reason, before DeepSeek stopped.
 
 ## 7. The gates of the project
 
@@ -372,7 +406,7 @@ What stage II did not prove, because the proof needs a window:
 | A | The preflight gives the recorded numbers: Qwen K 208 frees 3.17 GiB; DeepSeek K 160 frees 21.27 GiB in 28,896 tensors, and the MD cut frees 4.29 GiB; Inkling gives the table of §5.4 | Files only. The tool gives 3.16 GiB for Qwen K 208, and the record rounds to 3.17 GiB |
 | B | `st_moe` builds K 208 from the full Qwen with `results/qwen-rank.json`. Each tensor is the same as in `data/qwen-k208`, the folder of the live server, byte for byte | **Pass, 2026-11-25** (`scripts/gate_b.sh`). The five weight files and the index are equal, byte for byte: 101,316 tensors, 18.84 GiB. `config.json` is equal without `quantization_config`: a later step of the prune by hand changed those keys for the 4-bit draft |
 | C | The new scorer sends the requests of the scorer of the record, byte for byte. On the live Qwen, its NLL of `results/qwen-recorded.jsonl` is equal to `results/qwen-fit-g208-score.jsonl` inside the noise of two runs | **Pass, 2026-11-25** (`tests/test_gate_c.py`, `scripts/gate_c.sh`). The 121 requests are equal. The token counts of the 60 turns are equal. NLL per token: record 0.3274; old scorer today 0.3282; new scorer 0.3303 and 0.3283 in two runs. Two runs of the same scorer differ by 0.62%. The first limit of this gate was 0.2%: that limit was below the noise, so I changed the gate |
-| D | A third model runs from the preflight to the report. The probe estimate and the full gate agree within the band of the probe | Windows, with your approval for each stop |
+| D | A third model runs from the preflight to the report. The probe estimate and the full gate agree within the band of the probe | Not run. A first check with a known answer passes: for the full Qwen, the full gate of the record is inside the band of the probe at K 208 and at K 192 (§6) |
 
 Gate D is the test of the claim "each model". Inkling-2-Mini is a hard case: a different layout, a different
 server, and layers that run three times.
@@ -394,7 +428,8 @@ server, and layers that run three times.
 
 ## 9. Open points to check during the work
 
-1. Does the capture flag work with the model code of Inkling in its Docker image?
+1. Does the capture flag work with the model code of Inkling in its Docker image? The image knows the flag
+   `--enable-return-routed-experts` (its help text, 2026-11-25). A window must show that the model code fills it.
 2. Does `approximate_experts` of vLLM 0.33 load quantized experts? If it does, a different K in each layer needs no
    loader patch for the models of the shared MoE layer.
 3. For a layer that runs three times, is the rank better per pass or per layer?
