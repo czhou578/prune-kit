@@ -2,6 +2,8 @@
 # CAUTION: A wrong stop or start command leaves a live worker down. Check each command against the machine before
 # a real window, and run the window with --dry-run first.
 path: [/home/colin-spark/venvs/vllm033/bin]   # the folder of the server tools: a probe puts it first in PATH
+tools:   # the tool-call suite of the gate tasks: `python -m benchmarks.tool_calling` in this folder
+  model_benchmarks: {dir: ~/Projects/model-benchmarks, python: /home/colin-spark/venvs/vllm033/bin/python}
 workers:
   deepseek:   # DeepSeek V4 Flash, port 8888, about 85 GiB
     stop: docker stop deepseek-v4-flash-code226t5-deepseek-v4-flash-1

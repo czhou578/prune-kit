@@ -6,8 +6,8 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from . import (__version__, capture, preflight, probe, rank, replay, sessions, sources, st_moe, stages, window,
-               workflow)
+from . import (__version__, capture, gates, preflight, probe, rank, replay, sessions, sources, st_moe, stages,
+               window, workflow)
 from .facts import inspect
 from .resolve import ModelNotFound, resolve, slug
 from .weights import FormatError, WeightsError
@@ -115,6 +115,12 @@ def cmd_gate(a) -> int:
             result = replay.compare(*map(sessions.load, a.compare), flow.gates if flow else replay.LIMITS)
             print(replay.text(result))
             return 0 if all(result["gates"].values()) else 1
+        if a.speed:
+            if not (a.out and a.base_url):
+                raise ValueError("--speed needs --out and --base-url")
+            served = a.served or capture.post(a.base_url, "/v1/models", None)["data"][0]["id"]
+            print(f"speed     {gates.measure_speed(a.base_url, served, a.out)['tokens_per_second']} tokens per second")
+            return 0
         if not (a.out and (a.data or flow) and (a.base_url or a.from_data) and (a.record or a.recorded)):
             raise ValueError("--record and --score need --out, --base-url, and --data or --workflow; "
                              "--score also needs --recorded")
@@ -152,13 +158,13 @@ def cmd_probe(a) -> int:
     try:
         flow, facts = workflow.load(a.workflow), inspect(resolve(a.model, a.hub))
         if a.report:
-            r = probe.report(facts, flow)
+            r = probe.report(facts, flow, ranked=a.rank)
             print(json.dumps(r, indent=2) if a.json else probe.text(r))
             return 0
         if not a.machine:
             raise probe.ProbeError("the window file of a probe needs --machine")
         plan = probe.plan(facts, flow, probe.load_profile(facts.model_type), window.load_machine(a.machine),
-                          a.port, a.tokens, a.turns)
+                          a.port, a.tokens, a.turns, a.rank, a.gates)
         path = probe.write(facts, flow, plan)
     except (ModelNotFound, WeightsError, workflow.WorkflowError, window.WindowError, probe.ProbeError, OSError) as e:
         print(f"prune-kit: {e}", file=sys.stderr)
@@ -220,6 +226,7 @@ def parser() -> argparse.ArgumentParser:
     what = g.add_mutually_exclusive_group(required=True)
     what.add_argument("--record", action="store_true", help="the server writes one turn for each held-out target")
     what.add_argument("--score", action="store_true", help="the server scores the recorded turns")
+    what.add_argument("--speed", action="store_true", help="measure the decode speed of the server")
     what.add_argument("--compare", nargs=2, metavar=("REF", "NEW"), help="compare two score files with the limits")
     g.add_argument("--workflow", metavar="FILE", help="the workflow file: its data folder and its limits")
     g.add_argument("--data", metavar="DIR", help="a data folder with sessions.jsonl, in place of the workflow's")
@@ -245,6 +252,9 @@ def parser() -> argparse.ArgumentParser:
     o.add_argument("model", help="the full model: a folder, or a name in a local cache")
     o.add_argument("--workflow", required=True, metavar="FILE", help="the workflow file: its data, and its points")
     o.add_argument("--machine", metavar="FILE", help="the machine file: the path of the server tools")
+    o.add_argument("--rank", metavar="FILE", help="the rank of a full capture: no sample capture in the window")
+    o.add_argument("--gates", nargs="+", default=[], choices=("tasks", "speed"),
+                   help="each point also runs these gates: the tool-call suite, the decode speed")
     o.add_argument("--report", action="store_true", help="print the result of the probe that ran; write no file")
     o.add_argument("--json", action="store_true", help="--report: print the result as JSON")
     o.add_argument("--port", type=int, default=8890, help="the test port (default 8890); never a live port")

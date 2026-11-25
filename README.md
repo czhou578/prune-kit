@@ -27,7 +27,8 @@ stages. Stage III, the measurements, is not started: each of its runs needs a wi
 | `prune-kit gate`: the replay gates `nll` and `tools`: record, score, compare | Built |
 | `prune-kit window`: test servers in one window, with the restore of the workers | Built, with dry-run tests. No real window ran yet |
 | `prune-kit probe MODEL`: the window file of a probe, and its report | Built for the Qwen model type. No probe ran yet |
-| The gates `tasks`, `judge`, `speed` and `memory`, the decision report | Not built: stage III |
+| The gates `tasks`, `speed` and `memory`, and the verdict of a point in the report | Built. No window ran them yet |
+| The gate `judge` with the blind page | Not built: stage III |
 
 ## Scope
 
@@ -242,6 +243,26 @@ uv run prune-kit probe unsloth/Qwen3.6-35B-A3B-NVFP4-Fast --workflow examples/co
 - **The estimate:** a line through the measured cuts gives the deepest K that holds the `nll` gate. The estimate
   is not a gate result.
 - **The memory:** the peak of the full model in the window, from the results file of the window.
+
+**The full gate uses the same two commands.** `--rank FILE` gives the rank of a full capture: the window then has
+no sample capture. `--turns 60` sets the turns of the full `nll` gate. `--gates tasks speed` adds two clients to
+each point:
+
+- `tasks`: the tool-call suite of `model-benchmarks` (85 tasks). The machine file names its folder under
+  `tools.model_benchmarks`. A point passes with at most 3 tasks fewer than the full model.
+- `speed`: `prune-kit gate --speed` measures the decode speed on three fixed prompts. The test server of the Qwen
+  profile has no draft model, so this speed is the speed with no draft.
+- `memory` needs no client. The results file of the window gives the peak of each point, and the report compares
+  it with `memory.peak_gib` of the workflow.
+
+The report then prints a verdict for each cut:
+
+| Verdict | Meaning |
+|---|---|
+| `pass` | Each gate that has a result passes, and `nll` passes |
+| `your decision` | Only `nll` does not pass, and `tasks` and `judge` pass. This is the case of Qwen K 208 |
+| `fail` | A gate of `tools`, `tasks`, `memory` or `judge` fails |
+| `open` | `nll` does not pass, and `tasks` or `judge` has no result yet |
 
 On the gate files of the Qwen prune, the report gives the numbers of the record: +4.15% at K 208 and +8.04% at
 K 192. A test compares them.

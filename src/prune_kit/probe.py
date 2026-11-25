@@ -19,7 +19,7 @@ from pathlib import Path
 
 import yaml
 
-from . import rank, replay
+from . import gates, rank, replay
 from .facts import Facts
 from .preflight import default_ks
 from .resolve import slug
@@ -56,32 +56,47 @@ def folder(facts: Facts, workflow) -> Path:
 
 
 def plan(facts: Facts, workflow, profile: dict, machine: dict, port: int = 8890, tokens: int = 400_000,
-         turns: int = 20) -> dict:
-    """The window file of the probe, as data."""
+         turns: int = 20, ranked=None, more=()) -> dict:
+    """The window file of the probe, as data. ``ranked``: a rank file of a full capture. The window then has no
+    sample capture and builds each cut from that file. ``more``: the gates that each point also runs, of ``tasks``
+    (the tool-call suite of model-benchmarks, from ``tools.model_benchmarks`` of the machine file) and ``speed``."""
     run, url, flow = folder(facts, workflow), f"http://127.0.0.1:{port}", shlex.quote(str(workflow.path))
     kit = f"{shlex.quote(sys.executable)} -m prune_kit.cli"
     env = [f"{k}={shlex.quote(str(v))}" for k, v in profile.get("env", {}).items()]
     if machine.get("path"):
         env.append("PATH=" + ":".join([*machine["path"], "$PATH"]))
 
+    def extra(name: str) -> list:
+        out, bench = [], machine.get("tools", {}).get("model_benchmarks")
+        if "tasks" in more:
+            if not bench:
+                raise ProbeError("the gate tasks needs tools.model_benchmarks (dir, python) in the machine file")
+            out.append(f"cd {shlex.quote(str(Path(bench['dir']).expanduser()))} && {bench.get('python', 'python3')} "
+                       f"-m benchmarks.tool_calling --base-url {url}/v1 --model {NAME} "
+                       f"--output {shlex.quote(str((run / f'tools-{name}.json').resolve()))}")
+        if "speed" in more:
+            out.append(f"{kit} gate --speed --base-url {url} --served {NAME} --out {run}/speed-{name}.json")
+        return out
+
     def point(name: str, model, freed: int, flags: str, clients: list) -> dict:
         serve = profile["serve"].format(model=shlex.quote(str(model)), port=port, name=NAME)
         need = (facts.total_bytes - freed) / GIB + profile.get("overhead_gib", 0)
-        return {"name": name, "need_gib": round(need, 1), "health": f"{url}/health", "clients": clients,
+        return {"name": name, "need_gib": round(need, 1), "health": f"{url}/health", "clients": clients + extra(name),
                 "boot": " ".join(["env", *env, serve, flags]).strip() + f" > {run}/server-{name}.log 2>&1"}
 
     ks = cuts(workflow, facts)
     score = lambda name: (f"{kit} gate --score --workflow {flow} --base-url {url} --served {NAME} "
                           f"--recorded {run}/recorded.jsonl --out {run}/score-{name}.jsonl")
-    full = [f"{kit} capture {shlex.quote(str(facts.folder))} --workflow {flow} --base-url {url} --served {NAME} "
-            f"--tokens {tokens} --out {run}/capture.jsonl",
-            f"{kit} gate --record --workflow {flow} --base-url {url} --served {NAME} --n {turns} "
-            f"--out {run}/recorded.jsonl",
-            score("full"),
-            f"{kit} rank {run}/capture.jsonl --out {run}/rank.json --k {' '.join(map(str, ks))}"]
-    full += [f"{kit} build {shlex.quote(str(facts.folder))} --rank {run}/rank.json --k {k} "
+    sample = [] if ranked else [f"{kit} capture {shlex.quote(str(facts.folder))} --workflow {flow} --base-url {url} "
+                                f"--served {NAME} --tokens {tokens} --out {run}/capture.jsonl"]
+    full = sample + [f"{kit} gate --record --workflow {flow} --base-url {url} --served {NAME} --n {turns} "
+                     f"--out {run}/recorded.jsonl", score("full")]
+    if not ranked:
+        full.append(f"{kit} rank {run}/capture.jsonl --out {run}/rank.json --k {' '.join(map(str, ks))}")
+    source = shlex.quote(str(ranked)) if ranked else f"{run}/rank.json"
+    full += [f"{kit} build {shlex.quote(str(facts.folder))} --rank {source} --k {k} "
              f"--draft {profile.get('draft', 'rank')} --out {run}/k{k}" for k in ks]
-    points = [point("full", facts.folder, 0, profile.get("capture_flag", ""), full)]
+    points = [point("full", facts.folder, 0, "" if ranked else profile.get("capture_flag", ""), full)]
     points += [point(f"k{k}", run / f"k{k}", facts.freed(k), "", [score(f"k{k}")]) for k in ks]
     return {"points": points}
 
@@ -113,17 +128,18 @@ def band(ref_rows, new_rows, draws: int = 1000) -> tuple[float, float]:
     return changes[draws // 20], changes[-(draws // 20) - 1]
 
 
-def report(facts: Facts, workflow, run: Path | None = None) -> dict:
+def report(facts: Facts, workflow, run: Path | None = None, ranked=None) -> dict:
     """The result of a probe as plain data. ``text`` prints it."""
     run = Path(run or folder(facts, workflow))
     try:
-        captured, ref = load(run / "capture.jsonl"), load(run / "score-full.jsonl")
-        ranked = json.loads((run / "rank.json").read_text())
+        ref = load(run / "score-full.jsonl")
+        captured = load(run / "capture.jsonl") if (run / "capture.jsonl").exists() else []   # none: a given rank
+        ranked = json.loads(Path(ranked or run / "rank.json").read_text())
     except OSError as e:
         raise ProbeError(f"the probe did not run to its reference: {e.filename} does not exist") from e
     limit = workflow.gates["nll"]["limit_pct"]
     ks = sorted((int(p.stem[7:]) for p in run.glob("score-k*.jsonl")), reverse=True)
-    shares, points = rank.overlap(captured, ks) if ranked["segments"] > 1 else {}, []
+    shares, points = rank.overlap(captured, ks) if len(captured) > 1 else {}, []
     for k in ks:
         new = load(run / f"score-k{k}.jsonl")
         result, (low, high) = replay.compare(ref, new, workflow.gates), band(ref, new)
@@ -131,7 +147,9 @@ def report(facts: Facts, workflow, run: Path | None = None) -> dict:
         points.append({"k": k, "freed_bytes": facts.freed(k), "removed_pct": 100 * rank.removed(ranked, k),
                        "overlap": shares.get(k), "turns": result["new"]["turns"], "band": [low, high],
                        "nll_change_pct": result["nll_change_pct"], "nll_gate": state,
-                       "tools_gates": all(list(result["gates"].values())[1:])})
+                       "tools_gates": all(list(result["gates"].values())[1:]),
+                       **gates.point(run, f"k{k}", workflow)})
+        points[-1]["verdict"] = gates.verdict(state, points[-1]["tools_gates"], points[-1])
     # The line goes through the full model (no cut, no cost) and fits the measured points.
     square = sum(p["removed_pct"] ** 2 for p in points)
     slope = sum(p["removed_pct"] * p["nll_change_pct"] for p in points) / square if square else None
@@ -157,6 +175,15 @@ def text(r: dict) -> str:
         lines.append(f"K {p['k']:<6}{p['freed_bytes'] / GIB:>6.2f} GiB{p['removed_pct']:>17.2f}%{both:>9}"
                      f"{p['nll_change_pct']:>+11.2f}%{p['band'][0]:>+10.2f}% to {p['band'][1]:+.2f}%  {p['nll_gate']}"
                      + ("" if p["tools_gates"] else "; a tools gate fails"))
+    lines.append("")
+    for p in r["points"]:
+        parts = [f"tasks {t['new']} of {t['of']} (the full model: {t['reference']})" if (t := p["tasks"]) else "",
+                 f"peak {m['peak_gib']:.1f} GiB" + (f" (goal {m['goal_gib']:g})" if m["goal_gib"] else "")
+                 if (m := p["memory"]) else "",
+                 f"speed {v['tokens_per_second']} tok/s (the full model: {v['reference']})"
+                 if (v := p["speed"]) else "",
+                 f"judge {'no loss' if j['ok'] else 'a loss'} ({j['summary']})" if (j := p["judge"]) else ""]
+        lines.append(f"K {p['k']:<6}verdict: {p['verdict']}" + "".join(f"; {x}" for x in parts if x))
     if not r["points"]:
         lines.append("no cut has a score: the window ended before the first cut")
     elif r["estimate_k"]:
