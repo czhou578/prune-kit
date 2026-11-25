@@ -13,7 +13,8 @@ One pipeline that prunes a local model for one workflow.
 ## Status
 
 Stages I and II of [the plan](plans/PLAN_PRUNE_KIT.md) are built: the blueprint, the quick check, and the shared
-stages. Stage III, the measurements, is not started: each of its runs needs a window.
+stages. Stage III, the measurements, is in work: the probe, the gates and the judge are built, and two real windows
+ran on the full Qwen on 2026-11-25. The third model is not started. §6 of the plan has the results.
 
 | Part | State |
 |---|---|
