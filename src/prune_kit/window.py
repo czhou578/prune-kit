@@ -89,10 +89,31 @@ class System:
     def done(self, process) -> int | None:
         return process.poll()
 
-    def kill(self, process) -> None:
-        if process.poll() is None:
-            os.killpg(process.pid, signal.SIGTERM)
-            process.wait()
+    def kill(self, process, patience: float = 60) -> None:
+        """Stop the whole process group of a spawned command: SIGTERM, then SIGKILL after ``patience`` seconds. The
+        shell of the command ends at once, but a server can run on for some seconds, and a server that loads its
+        weights can ignore SIGTERM. So the group must be gone, and not only the shell."""
+        for sig, seconds in ((signal.SIGTERM, patience), (signal.SIGKILL, 10)):
+            try:
+                os.killpg(process.pid, sig)
+            except ProcessLookupError:
+                break
+            end = time.monotonic() + seconds
+            while time.monotonic() < end and self.alive(process.pid):
+                time.sleep(0.2)
+        process.wait()
+
+    @staticmethod
+    def alive(group: int) -> bool:
+        """Does the process group have a process that is not a zombie?"""
+        for stat in Path("/proc").glob("[0-9]*/stat"):
+            try:
+                fields = stat.read_text().rsplit(")", 1)[1].split()
+            except OSError:
+                continue
+            if int(fields[2]) == group and fields[0] != "Z":
+                return True
+        return False
 
     def get(self, url: str) -> str | None:
         try:
@@ -113,14 +134,20 @@ class DryRun(System):
     at once. A stop command of the machine file puts its worker down until its start command."""
 
     def __init__(self, log, machine: dict, start: datetime):
-        self.log, self.clock, self.off = log, start, set()
+        self.log, self.clock, self.off, self.serving = log, start, set(), False
+        self.live = {w[k] for w in machine["workers"].values() for k in ("health", "metrics")}
         self.effects = {w[k]: (k, w["health"]) for w in machine["workers"].values() for k in ("stop", "start")}
 
     now = lambda self: self.clock
     done = lambda self, process: 0
-    kill = lambda self, process: None
     memory = lambda self: (999.0, 999.0)
-    get = lambda self, url: None if url in self.off else ""
+
+    def get(self, url):
+        """A worker answers until its stop command. Each other URL is a test server: it answers after a spawn."""
+        return None if url in self.off or (url not in self.live and not self.serving) else ""
+
+    def kill(self, process):
+        self.serving = False
 
     def sleep(self, seconds):
         self.clock += timedelta(seconds=seconds)
@@ -133,6 +160,7 @@ class DryRun(System):
 
     def spawn(self, command):
         self.log(f"dry run: {command}")
+        self.serving = True
         return command
 
 
@@ -186,6 +214,8 @@ class Window:
         need = point.get("need_gib", 0)
         if not self.wait(lambda: self.sys.memory()[0] >= need, 300):
             raise WindowError(f"{point['name']}: less than {need} GiB available ({self.sys.memory()[0]:.1f})")
+        if self.sys.get(point["health"]) is not None:
+            raise WindowError(f"{point['name']}: a server answers on {point['health']} before the boot")
         self.log(f"boot {point['name']} ({self.sys.memory()[0]:.1f} GiB available)")
         process = self.sys.spawn(point["boot"])
         healthy = lambda: self.sys.get(point["health"]) is not None or self.sys.done(process) is not None
@@ -196,9 +226,16 @@ class Window:
         return None
 
     def down(self, point: dict, process) -> None:
+        """Stop the test server of a point. The health URL must stop its answers: a server that still answers would
+        look like the next point."""
         self.sys.kill(process)
         if point.get("down"):
             self.sys.run(point["down"])
+        end = self.sys.now() + timedelta(seconds=120)
+        while self.sys.get(point["health"]) is not None:
+            if self.sys.now() >= end:
+                raise WindowError(f"{point['name']}: the test server still answers after its stop")
+            self.sys.sleep(POLL_S)
 
     def client(self, command: str) -> int | None:
         """Run a client with the memory watch. Return its exit code, or None when the watch or the deadline

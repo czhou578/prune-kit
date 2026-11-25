@@ -181,3 +181,36 @@ def test_the_real_system_runs_bash_and_stops_the_whole_process_group(tmp_path):
     assert system.done(process) is not None and not child.exists()       # the child of the shell is gone too
     available, swap = system.memory()
     assert available > 0 and swap >= 0 and system.get("http://127.0.0.1:9/none") is None
+
+
+def test_a_server_that_answers_after_its_stop_delays_the_next_point():
+    fake = Fake()
+    fake.kill = lambda process: fake.log.append(f"kill {process['command']}") or setattr(fake, "dying", fake.clock)
+    get = fake.get
+    fake.get = lambda url: None if url == "test/health" and getattr(fake, "dying", None) and (
+        fake.clock - fake.dying).total_seconds() >= 40 and not fake.log[-1].startswith("serve") else get(url)
+    code, lines = run(fake)
+    boots = [n for n, c in enumerate(fake.log) if c.startswith("serve")]
+    plain = Fake()
+    run(plain)
+    assert code == 0 and len(boots) == 2 and fake.log[boots[1] - 1] == "down-full"
+    assert fake.clock - plain.clock >= timedelta(seconds=60)   # each stop waited until the health URL was silent
+
+
+def test_a_server_on_the_test_port_before_a_boot_is_a_safety_failure():
+    fake = Fake()
+    fake.up.add("test/health")
+    code, lines = run(fake)
+    assert code == 1 and "full: a server answers on test/health before the boot" in lines[1]
+    assert fake.log == ["stop-ds", "start-ds"]
+
+
+def test_the_real_system_stops_a_process_that_ignores_sigterm(tmp_path):
+    system = window.System()
+    process = system.spawn(f"(trap '' TERM; echo $BASHPID > {tmp_path}/child; sleep 60) & wait")
+    while not (tmp_path / "child").exists() or not (tmp_path / "child").read_text().strip():
+        system.sleep(0.05)
+    child = int((tmp_path / "child").read_text())
+    assert window.System.alive(process.pid)
+    system.kill(process, patience=1)
+    assert not window.System.alive(process.pid) and not Path(f"/proc/{child}").exists()
