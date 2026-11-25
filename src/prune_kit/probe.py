@@ -59,7 +59,8 @@ def plan(facts: Facts, workflow, profile: dict, machine: dict, port: int = 8890,
          turns: int = 20, ranked=None, more=()) -> dict:
     """The window file of the probe, as data. ``ranked``: a rank file of a full capture. The window then has no
     sample capture and builds each cut from that file. ``more``: the gates that each point also runs, of ``tasks``
-    (the tool-call suite of model-benchmarks, from ``tools.model_benchmarks`` of the machine file) and ``speed``."""
+    (the tool-call suite of model-benchmarks, from ``tools.model_benchmarks`` of the machine file), ``speed``, and
+    ``judge`` (each cut also records its own turns, for ``prune-kit judge`` after the window)."""
     run, url, flow = folder(facts, workflow), f"http://127.0.0.1:{port}", shlex.quote(str(workflow.path))
     kit = f"{shlex.quote(sys.executable)} -m prune_kit.cli"
     env = [f"{k}={shlex.quote(str(v))}" for k, v in profile.get("env", {}).items()]
@@ -74,6 +75,9 @@ def plan(facts: Facts, workflow, profile: dict, machine: dict, port: int = 8890,
             out.append(f"cd {shlex.quote(str(Path(bench['dir']).expanduser()))} && {bench.get('python', 'python3')} "
                        f"-m benchmarks.tool_calling --base-url {url}/v1 --model {NAME} "
                        f"--output {shlex.quote(str((run / f'tools-{name}.json').resolve()))}")
+        if "judge" in more and name != "full":   # the answers of the point to the same targets, with the same seeds
+            out.append(f"{kit} gate --record --workflow {flow} --base-url {url} --served {NAME} "
+                       f"--n {workflow.gates['judge']['turns']} --out {run}/recorded-{name}.jsonl")
         if "speed" in more:
             out.append(f"{kit} gate --speed --base-url {url} --served {NAME} --out {run}/speed-{name}.json")
         return out

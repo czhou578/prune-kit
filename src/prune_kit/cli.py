@@ -1,4 +1,4 @@
-"""Command line: prune-kit stages | preflight | data | capture | rank | build | gate | window | probe."""
+"""Command line: prune-kit stages | preflight | data | capture | rank | build | gate | window | probe | judge."""
 
 import argparse
 import json
@@ -6,8 +6,8 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from . import (__version__, capture, gates, preflight, probe, rank, replay, sessions, sources, st_moe, stages,
-               window, workflow)
+from . import (__version__, capture, gates, judge, preflight, probe, rank, replay, sessions, sources, st_moe,
+               stages, window, workflow)
 from .facts import inspect
 from .resolve import ModelNotFound, resolve, slug
 from .weights import FormatError, WeightsError
@@ -177,6 +177,22 @@ def cmd_probe(a) -> int:
     return 0
 
 
+def cmd_judge(a) -> int:
+    """Exit code 0: the judge finds no loss. 1: the judge finds a loss. 2: a fault."""
+    try:
+        flow = workflow.load(a.workflow)
+        folder = Path(a.data) if a.data else flow.folder
+        served = a.served or flow.gates["judge"]["model"]
+        served = served or capture.post(a.base_url, "/v1/models", None)["data"][0]["id"]
+        result = judge.run(a.base_url, served, sessions.load(folder / "sessions.jsonl"), sessions.load(a.ref),
+                           sessions.load(a.new), flow.gates["judge"]["turns"], a.out, a.page, json.loads(a.body))
+    except (workflow.WorkflowError, OSError, ValueError, KeyError) as e:
+        print(f"prune-kit: {e}", file=sys.stderr)
+        return 2
+    print(f"judge     {result['summary']}\nverdict   " + ("no loss that the test shows" if result["ok"] else "a loss"))
+    return 0 if result["ok"] else 1
+
+
 def parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="prune-kit", description="Prune a local model for one workflow.")
     p.add_argument("--version", action="version", version=f"prune-kit {__version__}")
@@ -253,8 +269,8 @@ def parser() -> argparse.ArgumentParser:
     o.add_argument("--workflow", required=True, metavar="FILE", help="the workflow file: its data, and its points")
     o.add_argument("--machine", metavar="FILE", help="the machine file: the path of the server tools")
     o.add_argument("--rank", metavar="FILE", help="the rank of a full capture: no sample capture in the window")
-    o.add_argument("--gates", nargs="+", default=[], choices=("tasks", "speed"),
-                   help="each point also runs these gates: the tool-call suite, the decode speed")
+    o.add_argument("--gates", nargs="+", default=[], choices=("tasks", "speed", "judge"),
+                   help="each point also runs these: the tool-call suite, the decode speed, the turns for the judge")
     o.add_argument("--report", action="store_true", help="print the result of the probe that ran; write no file")
     o.add_argument("--json", action="store_true", help="--report: print the result as JSON")
     o.add_argument("--port", type=int, default=8890, help="the test port (default 8890); never a live port")
@@ -262,6 +278,17 @@ def parser() -> argparse.ArgumentParser:
     o.add_argument("--turns", type=int, default=20, help="the held-out turns that each point scores")
     o.add_argument("--hub", action="append", default=[], metavar="DIR", help="one more cache folder to search")
     o.set_defaults(run=cmd_probe)
+    j = sub.add_parser("judge", help="a blind judge compares the recorded turns of the full model and of a point")
+    j.add_argument("ref", metavar="REF", help="the recorded turns of the full model")
+    j.add_argument("new", metavar="NEW", help="the recorded turns of the pruned point, for the same targets")
+    j.add_argument("--workflow", required=True, metavar="FILE", help="the workflow file: its data, and gates.judge")
+    j.add_argument("--data", metavar="DIR", help="a data folder with sessions.jsonl, in place of the workflow's")
+    j.add_argument("--base-url", required=True, metavar="URL", help="the server of the judge model")
+    j.add_argument("--served", metavar="NAME", help="the judge model (default: gates.judge.model, or the first model)")
+    j.add_argument("--out", required=True, metavar="FILE", help="the result, for example judge-k208.json in the run")
+    j.add_argument("--page", metavar="FILE", help="also write the blind pairs as an HTML page for your own review")
+    j.add_argument("--body", default="{}", metavar="JSON", help="more keys for each judge request")
+    j.set_defaults(run=cmd_judge)
     return p
 
 

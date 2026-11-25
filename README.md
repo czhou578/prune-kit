@@ -28,7 +28,7 @@ stages. Stage III, the measurements, is not started: each of its runs needs a wi
 | `prune-kit window`: test servers in one window, with the restore of the workers | Built, with dry-run tests. No real window ran yet |
 | `prune-kit probe MODEL`: the window file of a probe, and its report | Built for the Qwen model type. No probe ran yet |
 | The gates `tasks`, `speed` and `memory`, and the verdict of a point in the report | Built. No window ran them yet |
-| The gate `judge` with the blind page | Not built: stage III |
+| `prune-kit judge`: the gate `judge`, with the blind page for your own review | Built. No real judge run yet |
 
 ## Scope
 
@@ -266,6 +266,25 @@ The report then prints a verdict for each cut:
 
 On the gate files of the Qwen prune, the report gives the numbers of the record: +4.15% at K 208 and +8.04% at
 K 192. A test compares them.
+
+### The judge
+
+The judge compares the answers of the full model and of a pruned point to the same held-out requests. With
+`--gates judge`, each cut of a window also records its own turns (`recorded-k<K>.jsonl`). After the window, a judge
+model on a live server reads each pair:
+
+```bash
+uv run prune-kit judge runs/recorded.jsonl runs/recorded-k208.jsonl --workflow examples/coding-fast-route.yml --base-url http://127.0.0.1:8888 --out runs/judge-k208.json --page runs/pairs-k208.html
+```
+
+- The judge sees the two answers as A and B. A hash of the turn fixes which model is A. The judge does not see the
+  reasoning of a model.
+- A sign test compares the wins and the losses of the point. The gate finds a loss only when the point loses more
+  often than it wins, and the test shows it (p below 0.05). A good result means "no loss". It never means a gain.
+- `--page` writes the same pairs as one HTML page, with no model names. The key is at the end of the page.
+- `--body JSON` adds keys to each judge request, for example `{"chat_template_kwargs": {"thinking": false}}`.
+- Put the result into the folder of the run as `judge-k<K>.json`. The report of the run then shows it, and it uses
+  it for the verdict.
 
 ## Tests
 
