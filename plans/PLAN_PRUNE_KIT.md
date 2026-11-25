@@ -49,7 +49,7 @@ calls that repo "the record".
 | vLLM overhead on Qwen | 6.2 to 7.7 GiB on top of the weights and the KV pin. No setting lowers it | `PLAN_QWEN_PRUNE.md` §7.4, §8 |
 | Time of a window | The Qwen capture (2.44M tokens, 99 segments) took 79 minutes of downtime. Gate window 1 took 33 minutes | `PLAN_QWEN_PRUNE.md` §6.1, §7.1 |
 | Stock DeepSeek checkpoint | On disk: 98.83 GiB in `~/Projects/DeepSeek-v4-Flash-One-DGX-Spark/data/tp1`. The layer files are `root:600` | `ls` |
-| Full Qwen checkpoint | Not on disk. The folder in the Hugging Face cache holds 6.7 MB. `data/qwen-k208/PRUNE.json` names it as the source | `du` |
+| Full Qwen checkpoint | On disk: 22.01 GiB of tensors. Its files are links into the shared blob folder of the Hugging Face cache, so `du` without `-L` shows 6.7 MB. `data/qwen-k208/PRUNE.json` names it as the source | `du -L`, `prune_kit.facts.inspect` |
 | Qwen gate files | On disk: `results/qwen-recorded.jsonl` (the 60 recorded turns), `results/qwen-fit-g208-score.jsonl`, `results/qwen-rank.json` | `ls` |
 | Inkling-2-Mini | On disk, in the Hugging Face cache. 24 layers, and the middle 12 run three times. 128 experts per layer, 8 per token. The experts hold 14.59 GiB of 18.18 GiB (80%), 4.86 MiB per expert | `config.json`, the safetensors header |
 | Inkling-2-Mini, layout | One stacked tensor set per layer (`mlp.experts.w13_weight`, `w2_weight`, with scale tensors), in NVFP4 and MXFP8. The router has a bias (`mlp.gate.bias`). The MTP draft is dense and is in its own file | the safetensors index |
@@ -347,8 +347,8 @@ Stop point: you decide if the work goes on.
 
 | Gate | Test | Needs |
 |---|---|---|
-| A | The preflight gives the recorded numbers: Qwen K 208 frees 3.17 GiB; DeepSeek K 160 frees 21.27 GiB in 28,896 tensors, and the MD cut frees 4.29 GiB; Inkling gives the table of §5.4 | Files only. The full Qwen is not on disk, so the test reads the bytes per expert from the K 208 folder and computes the step from 256 to 208 |
-| B | `st_moe` and `qwen_prune.py` build the same smaller point from `data/qwen-k208`, with one rank file for its 208 ids. Each tensor of the two folders is the same, byte for byte. If `qwen_prune.py` cannot read a pruned source, the test uses the full Qwen (§9, point 5) | Disk only, about 2 × 18 GiB |
+| A | The preflight gives the recorded numbers: Qwen K 208 frees 3.17 GiB; DeepSeek K 160 frees 21.27 GiB in 28,896 tensors, and the MD cut frees 4.29 GiB; Inkling gives the table of §5.4 | Files only. The tool gives 3.16 GiB for Qwen K 208, and the record rounds to 3.17 GiB |
+| B | `st_moe` builds K 208 from the full Qwen with `results/qwen-rank.json`. Each tensor is the same as in `data/qwen-k208`, the folder of the live server, byte for byte | Disk only, about 19 GiB |
 | C | The new scorer scores `results/qwen-recorded.jsonl` on the live Qwen. The NLL is within 0.2% of `results/qwen-fit-g208-score.jsonl` | The live Qwen at an idle time. No window |
 | D | A third model runs from the preflight to the report. The probe estimate and the full gate agree within the band of the probe | Windows, with your approval for each stop |
 
@@ -379,10 +379,8 @@ server, and layers that run three times.
 4. Does the share of a layer that one token uses predict the depth? DeepSeek uses 2.8% (6 of 216), Qwen 3.1%
    (8 of 256) and Inkling 6.25% (8 of 128). The record says that a small model loses more. Inkling is the third
    data point.
-5. A new test of the full Qwen needs a download of about 21 GiB. Gates A and C do not need it, and gate B needs
-   it only as a fallback.
-6. Can a mask work with no copy of the checkpoint, as a setting of the server?
-7. When does `--endpoint` of `agent-eval` reach `main`? PR 13 needs it.
+5. Can a mask work with no copy of the checkpoint, as a setting of the server?
+6. When does `--endpoint` of `agent-eval` reach `main`? PR 13 needs it.
 
 ## 10. Your decisions
 
