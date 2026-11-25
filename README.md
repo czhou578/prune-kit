@@ -12,14 +12,15 @@ One pipeline that prunes a local model for one workflow.
 
 ## Status
 
-Stage I of [the plan](plans/PLAN_PRUNE_KIT.md) is built: the blueprint and the quick check. Stages II and III are
-not started.
+Stage I of [the plan](plans/PLAN_PRUNE_KIT.md) is built: the blueprint and the quick check. Stage II, the shared
+stages, is in work. Stage III is not started.
 
 | Part | State |
 |---|---|
 | [BLUEPRINT.md](BLUEPRINT.md): the stages, the gates and the rules of a prune | Written |
 | `prune-kit stages`: the stages, and the command of each stage | Built |
 | `prune-kit preflight MODEL`: the quick check, from the model files only | Built for safetensors checkpoints, EXL3 included |
+| The workflow file, and `prune-kit preflight MODEL --workflow FILE` | Built |
 | The other stages | Not built. Do them by hand with the blueprint |
 
 ## Scope
@@ -62,6 +63,20 @@ The exit code is 0, 0 and 1. `--json` prints the same report as JSON.
 
 The preflight gives no estimate of how deep a cut can go. Only a measurement gives that depth: see §5.5 of the
 plan.
+
+### The workflow file
+
+One YAML file describes one workflow: its data sources, its memory goal, and the limits of its gates.
+[examples/coding-fast-route.yml](examples/coding-fast-route.yml) is the workflow of the Qwen prune. Each key except
+`name` and `data.sources` has a default. A file with a fault gives one error that lists each fault.
+
+```bash
+uv run prune-kit preflight unsloth/Qwen3.6-35B-A3B-NVFP4-Fast --workflow examples/coding-fast-route.yml
+```
+
+With a workflow file, the preflight adds the cut that reaches `memory.peak_gib`: the largest K that frees the need.
+Set `memory.overhead_gib` to the measured KV pin plus the overhead of the server. Without it, the need holds the
+weights only, and the preflight says that the need is a lower limit.
 
 ## Tests
 
