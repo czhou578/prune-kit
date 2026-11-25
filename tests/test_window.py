@@ -163,3 +163,21 @@ def test_the_dry_run_of_the_command_prints_each_command_and_runs_none(capsys):
     assert "the worker deepseek must be up mon 05:00 to 10:00" in capsys.readouterr().out
     assert cli.main([*args, "--restore-at", "soon"]) == 2
     assert cli.main(["window", "none.yml", *args[2:], "--restore-at", "2099-01-04 03:00"]) == 2
+
+
+def test_the_real_system_runs_bash_and_stops_the_whole_process_group(tmp_path):
+    system = window.System()
+    assert system.run("[[ a == a ]] && kill -0 -- -$(ps -o pgid= -p $$ | tr -d ' ')") == 0   # not valid in sh
+    process = system.spawn(f"sleep 60 & echo $! > {tmp_path}/child; wait")
+    while not (tmp_path / "child").exists() or not (tmp_path / "child").read_text().strip():
+        system.sleep(0.05)
+    child = Path(f"/proc/{int((tmp_path / 'child').read_text())}")
+    assert system.done(process) is None and child.exists()
+    system.kill(process)
+    for _ in range(40):
+        if not child.exists():
+            break
+        system.sleep(0.05)
+    assert system.done(process) is not None and not child.exists()       # the child of the shell is gone too
+    available, swap = system.memory()
+    assert available > 0 and swap >= 0 and system.get("http://127.0.0.1:9/none") is None
