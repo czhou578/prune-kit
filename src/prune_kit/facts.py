@@ -14,7 +14,7 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .weights import Tensor, tensors
+from .weights import Tensor, WeightsError, tensors
 
 PER_EXPERT = re.compile(r"^(?:.*\.)?layers\.(\d+)\.(?:[A-Za-z_]\w*\.)*experts\.(\d+)\.")
 STACKED = re.compile(r"^(?:.*\.)?layers\.(\d+)\.(?:[A-Za-z_]\w*\.)*experts\.[A-Za-z_]\w*$")
@@ -43,6 +43,8 @@ class Facts:
     draft: Draft | None = None
     loop: tuple[int, int, int] | None = None                # first core layer, last core layer + 1, passes
     quant: str | None = None
+    hash_layers: int = 0                                    # the first layers route by a token table
+    unread_files: int = 0                                   # weight files with no read permission
 
     @property
     def is_moe(self) -> bool:
@@ -82,8 +84,11 @@ def _routed(items: list[Tensor]):
         if m := PER_EXPERT.match(t.name):
             ids[int(m[1])].add(int(m[2]))
             size[int(m[1])] += t.size
-        elif (m := STACKED.match(t.name)) and t.shape:
-            stacked[int(m[1])].append(t)
+        elif m := STACKED.match(t.name):
+            if t.shape is None:
+                raise WeightsError(f"{t.file}: no permission to read the header, and a stacked layout needs the shapes")
+            if t.shape:
+                stacked[int(m[1])].append(t)
     if ids:
         return "per_expert", {layer: len(e) for layer, e in sorted(ids.items())}, dict(sorted(size.items()))
     experts, size = {}, {}
@@ -109,7 +114,8 @@ def inspect(folder: Path) -> Facts:
     target = [t for t in items if not t.draft]
     layout, experts, expert_bytes = _routed(target)
     loop = _find(config, ("loop_config",)) or {}
-    quant = config.get("quantization_config") or {}
+    extra = folder / "quantization_config.json"
+    quant = config.get("quantization_config") or (json.loads(extra.read_text()) if extra.is_file() else {})
     return Facts(
         folder=folder,
         model_type=config.get("model_type", "unknown"),
@@ -122,4 +128,6 @@ def inspect(folder: Path) -> Facts:
         draft=_draft([t for t in items if t.draft], {t.file for t in target}),
         loop=(loop["core_start"], loop["core_end"], loop["num_passes"]) if loop.get("num_passes", 1) > 1 else None,
         quant=quant.get("quant_algo") or quant.get("quant_method"),
+        hash_layers=_find(config, ("num_hash_layers",)) or 0,
+        unread_files=len({t.file for t in items if t.shape is None}),
     )

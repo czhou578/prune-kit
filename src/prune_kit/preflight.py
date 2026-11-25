@@ -18,6 +18,13 @@ BY_HAND = {
                     "capture": "the server patch of image-patch/ with Model Runner V1"},
 }
 WORK = ("no", "unknown")   # the states that need work before the pipeline can run
+# What a dense model can do in place of a prune, with the result of each lever in spark-moe-specialize.
+LEVERS = (
+    ("quantization", "a smaller format of the same weights, for example NVFP4 in place of FP8"),
+    ("draft model", "a 4-bit copy of the draft: 1.09 GiB on Qwen, with no change to the output of the target"),
+    ("context", "a smaller KV cache pin, where the KV need grows with the context: 0.75 GiB on DeepSeek"),
+    ("layers", "not a lever: on DeepSeek each removed layer cost +2.15% NLL or more"),
+)
 
 
 @dataclass
@@ -66,6 +73,12 @@ def checks(f: Facts, available: int | None) -> list[Check]:
         out.append(Check("draft model", "yes" if "draft" in known else "unknown",
                          f"{f.draft.experts} experts of its own; "
                          + known.get("draft", "the server must keep that count beside a pruned target")))
+    if f.hash_layers:
+        out.append(Check("hash routing", "info", f"layers 0 to {f.hash_layers - 1} route by a token table: "
+                                                 "a cut must move the entries of a dropped expert"))
+    if f.unread_files:
+        out.append(Check("sizes", "info", f"{f.unread_files} weight files have no read permission: "
+                                          "the sizes come from the file sizes"))
     if f.loop:
         first, end, passes = f.loop
         out.append(Check("loop", "info", f"layers {first} to {end - 1} run {passes} times: "
@@ -112,4 +125,6 @@ def text(r: dict) -> str:
         lines += [f"K {c['k']:<7} {c['freed_bytes'] / GIB:5.2f} GiB    {c['share']:.0%}" for c in r["cuts"]]
     lines += ["", "can the pipeline run?"]
     lines += [f"  {c['name']:<15} {c['state']:<8} {c['note']}" for c in r["checks"]]
+    if not r["moe"]:
+        lines += ["", "other levers"] + [f"  {name:<15} {note}" for name, note in LEVERS]
     return "\n".join(lines + [f"verdict   {r['verdict']}"])

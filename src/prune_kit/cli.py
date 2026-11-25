@@ -7,7 +7,7 @@ import sys
 from . import __version__, preflight, stages
 from .facts import inspect
 from .resolve import ModelNotFound, resolve
-from .weights import WeightsError
+from .weights import FormatError, WeightsError
 
 
 def cmd_stages(_args) -> int:
@@ -19,6 +19,9 @@ def cmd_preflight(a) -> int:
     """Exit code 0: the pipeline can run, possibly with work. 1: NO-GO. 2: the model cannot be read."""
     try:
         facts = inspect(resolve(a.model, a.hub))
+    except FormatError as e:
+        print(f"{e}\nverdict   NO-GO")
+        return 1
     except (ModelNotFound, WeightsError, OSError) as e:
         print(f"prune-kit: {e}", file=sys.stderr)
         return 2
