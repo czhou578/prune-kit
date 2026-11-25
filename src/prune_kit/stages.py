@@ -21,7 +21,7 @@ STAGES = (
     Stage(4, "screen", "Which cuts pass a short replay?", None),
     Stage(5, "prune", "Does the pruned folder hold the kept experts, byte for byte?", "prune-kit build"),
     Stage(6, "gates", "Does the point pass the replay, the tools, the tasks, the judge, the speed and the memory?",
-          None),
+          "prune-kit gate"),
     Stage(7, "decision", "Which point do you choose?", None),
 )
 

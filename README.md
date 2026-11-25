@@ -24,6 +24,7 @@ stages, is in work. Stage III is not started.
 | `prune-kit data FILE`: the sessions of a workflow, the held-out split, the secret pass | Built |
 | `prune-kit capture MODEL` and `prune-kit rank CAPTURE`: the routed experts of the workflow, and their order | Built. The capture needs a server with its capture flag |
 | `prune-kit build MODEL`: the pruned folder, and its check against the source | Built for safetensors checkpoints. Not for EXL3 |
+| `prune-kit gate`: the replay gates `nll` and `tools`: record, score, compare | Built |
 | The other stages | Not built. Do them by hand with the blueprint |
 
 ## Scope
@@ -154,6 +155,34 @@ never changes the full model. Then it compares each kept tensor with its source,
 - `--check` only compares a pruned folder that exists with its source.
 - `scripts/gate_b.sh` builds K 208 of the full Qwen and compares each file with the folder of the prune by hand.
   It needs that folder, and about 19 GiB of disk for some minutes.
+
+### The replay gate
+
+The replay gate has three steps. Each step is one command, and a second start continues an output file.
+
+1. Record: the full model writes one turn for each of 60 held-out targets.
+2. Score: a model scores the recorded turns. Score the full model and each pruned point in the same window.
+3. Compare: the totals of two score files, against the limits of the gates `nll` and `tools`.
+
+```bash
+uv run prune-kit gate --record --workflow examples/coding-fast-route.yml --base-url http://127.0.0.1:8889 --out runs/recorded.jsonl
+```
+
+```bash
+uv run prune-kit gate --score --workflow examples/coding-fast-route.yml --base-url http://127.0.0.1:8889 --recorded runs/recorded.jsonl --out runs/score-k208.jsonl
+```
+
+```bash
+uv run prune-kit gate --compare runs/score-full.jsonl runs/score-k208.jsonl --workflow examples/coding-fast-route.yml
+```
+
+- The exit code of `--compare` is 0 when each gate passes, and 1 when a gate fails.
+- `--data DIR` gives a data folder in place of the folder of the workflow. Without a workflow file, the limits are
+  the limits of the two prunes.
+- The score of one turn moves by 2% to 5% between two runs on the live Qwen. The total of 60 turns moves much less.
+  Compare totals only, and score the reference in the same window as the points.
+- `scripts/gate_c.sh` scores the recorded turns of the Qwen prune with this scorer and with the scorer of the
+  record, on the live Qwen. It stops no server.
 
 ## Tests
 
