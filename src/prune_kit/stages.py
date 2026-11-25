@@ -14,7 +14,8 @@ class Stage:
 STAGES = (
     Stage(0, "preflight", "How much memory does each cut free, and can the pipeline run on this model?",
           "prune-kit preflight"),
-    Stage(1, "data", "Which recorded sessions are the workflow, and which sessions are held out?", None),
+    Stage(1, "data", "Which recorded sessions are the workflow, and which sessions are held out?",
+          "prune-kit data"),
     Stage(2, "capture", "Which experts does the model route the workflow to?", None),
     Stage(3, "rank", "Which experts of each layer does the workflow use least?", None),
     Stage(4, "screen", "Which cuts pass a short replay?", None),

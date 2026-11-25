@@ -24,7 +24,7 @@ def test_the_example_loads_with_the_defaults():
 
 
 def test_a_small_file_gets_each_default(tmp_path):
-    w = workflow.load(write(tmp_path, "name: a\ndata: {sources: [{kind: hermes}], folder: ~/x}\n"))
+    w = workflow.load(write(tmp_path, "name: a\ndata: {sources: [{kind: repo}], folder: ~/x}\n"))
     assert w.gates["nll"] == {"limit_pct": 3.0, "turns": 60} and w.data["held_out"] == {"share": 0.15, "projects": []}
     assert w.folder == Path.home() / "x" and w.need_bytes(10 << 30) is None
 

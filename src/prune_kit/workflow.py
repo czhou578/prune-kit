@@ -9,12 +9,11 @@ from pathlib import Path
 
 import yaml
 
-SOURCES = {   # the kinds of data source, with the keys that each kind accepts
-    "sessions": {"path"},                       # a sessions.jsonl of an earlier run: it keeps its own split
-    "claude_code": {"root", "projects"},        # the Claude Code transcripts
-    "gateway_records": {"root", "route"},       # the records of model-gateway
-    "hermes": {"root"},                         # the sessions of Hermes
-    "repo": {"paths", "files"},                 # code files of repositories
+SOURCES = {   # the kinds of data source, with the keys that each kind accepts (sources.py)
+    "sessions": {"path", "sources"},
+    "claude_code": {"root", "projects", "map", "budget"},
+    "gateway_records": {"root", "route", "map", "budget"},
+    "repo": {"paths", "files", "budget"},
 }
 NUMBER, COUNT = (int, float), int
 # Each key with its type and its default. None as a default: the key has no default and can be absent.
