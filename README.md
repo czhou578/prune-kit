@@ -21,6 +21,7 @@ stages, is in work. Stage III is not started.
 | `prune-kit stages`: the stages, and the command of each stage | Built |
 | `prune-kit preflight MODEL`: the quick check, from the model files only | Built for safetensors checkpoints, EXL3 included |
 | The workflow file, and `prune-kit preflight MODEL --workflow FILE` | Built |
+| The data format: `sessions.jsonl`, the held-out split, the secret pass | Built. No command builds the sessions yet |
 | The other stages | Not built. Do them by hand with the blueprint |
 
 ## Scope
@@ -77,6 +78,15 @@ uv run prune-kit preflight unsloth/Qwen3.6-35B-A3B-NVFP4-Fast --workflow example
 With a workflow file, the preflight adds the cut that reaches `memory.peak_gib`: the largest K that frees the need.
 Set `memory.overhead_gib` to the measured KV pin plus the overhead of the server. Without it, the need holds the
 weights only, and the preflight says that the need is a lower limit.
+
+The preflight also reads `sessions.jsonl` in the data folder of the workflow (`data.folder`, default
+`runs/data/<name>`). It prints the sessions, the segments, the tokens and the target turns of each source and split.
+The line `data` compares the calibration tokens and the held-out turns with the minimums of the workflow. Below a
+minimum, the verdict lists `data` as work.
+
+- CAUTION: `sessions.jsonl` can hold private text of your transcripts. Keep it out of git: `runs/` is in
+  `.gitignore`. The secret pass replaces only the strings that look like keys.
+- A token count of the data is an estimate: the characters divided by 4.
 
 ## Tests
 

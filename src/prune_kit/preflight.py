@@ -7,6 +7,7 @@ tolerates: only a measurement gives that.
 import math
 from dataclasses import asdict, dataclass
 
+from . import sessions
 from .facts import Facts
 
 GIB, MIB = 1 << 30, 1 << 20
@@ -107,10 +108,27 @@ def need(f: Facts, workflow) -> dict | None:
     return {**workflow.memory, "bytes": goal, "k": k, "share": (1 - k / f.max_experts) if k else None}
 
 
+def data(workflow) -> tuple[dict | None, Check]:
+    """The sessions of the workflow against its minimums: the report of ``sessions.check``, and the line of the list."""
+    path = workflow.folder / "sessions.jsonl"
+    if not path.exists():
+        return None, Check("data", "no", f"{path} does not exist: build the sessions of the workflow")
+    d = workflow.data
+    r = sessions.check(sessions.load(path), d["min_calibration_tokens"], d["min_held_out_turns"])
+    note = (f"{r['calibration_tokens']:,} calibration tokens (minimum {d['min_calibration_tokens']:,}), "
+            f"{r['held_out_turns']} held-out turns (minimum {d['min_held_out_turns']})")
+    return r, Check("data", "yes" if r["ok"] else "no", note)
+
+
 def report(f: Facts, ks=None, available: int | None = None, workflow=None) -> dict:
     """The preflight of one model as plain data. ``text`` prints it."""
     items = checks(f, available)
+    built = None
+    if workflow:
+        built, line = data(workflow)
+        items.append(line)
     return {
+        "data": built,
         "workflow": workflow.name if workflow else None, "need": need(f, workflow) if workflow else None,
         "folder": str(f.folder), "model_type": f.model_type, "moe": f.is_moe, "layout": f.layout, "quant": f.quant,
         "layers": len(f.experts), "experts_min": min(f.experts.values(), default=0), "experts_max": f.max_experts,
@@ -147,6 +165,9 @@ def text(r: dict) -> str:
         if n["overhead_gib"] is None:
             lines.append("          a lower limit: memory.overhead_gib is not set, so the need has the weights only, "
                          "and not the KV pin or the overhead of the server")
+    if r.get("data"):
+        lines += ["", "data      the token counts are estimates: the characters divided by 4"]
+        lines += ["  " + row for row in sessions.table(r["data"])]
     lines += ["", "can the pipeline run?"]
     lines += [f"  {c['name']:<15} {c['state']:<8} {c['note']}" for c in r["checks"]]
     if not r["moe"]:
