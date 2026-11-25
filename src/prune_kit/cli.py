@@ -1,4 +1,4 @@
-"""Command line: prune-kit stages | preflight | data | capture | rank | build | gate | window."""
+"""Command line: prune-kit stages | preflight | data | capture | rank | build | gate | window | probe."""
 
 import argparse
 import json
@@ -6,7 +6,8 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from . import __version__, capture, preflight, rank, replay, sessions, sources, st_moe, stages, window, workflow
+from . import (__version__, capture, preflight, probe, rank, replay, sessions, sources, st_moe, stages, window,
+               workflow)
 from .facts import inspect
 from .resolve import ModelNotFound, resolve, slug
 from .weights import FormatError, WeightsError
@@ -68,7 +69,8 @@ def cmd_capture(a) -> int:
         print(f"prune-kit: {e}", file=sys.stderr)
         return 2
     out = Path(a.out or Path("runs") / slug(folder) / flow.name / "capture.jsonl")
-    failed = capture.run(a.base_url, served, data, tools, out, experts, a.limit, json.loads(a.body), a.generate)
+    failed = capture.run(a.base_url, served, data, tools, out, experts, a.limit, json.loads(a.body), a.generate,
+                         max_tokens=a.tokens)
     print(f"capture   {out}" + (f": {failed} segments failed; start the command again" if failed else ""))
     return 1 if failed else 0
 
@@ -142,7 +144,25 @@ def cmd_window(a) -> int:
         return 2
     log = lambda line: print(f"{datetime.now():%F %T} {line}", flush=True)
     system = window.DryRun(log, machine, datetime.now()) if a.dry_run else None
-    return window.Window(machine, a.stop, *times, system, log).run(points)
+    return window.Window(machine, a.stop, *times, system, log, None if a.dry_run else a.results).run(points)
+
+
+def cmd_probe(a) -> int:
+    """Exit code 0: the window file of the probe is written. 2: a fault."""
+    try:
+        flow, facts = workflow.load(a.workflow), inspect(resolve(a.model, a.hub))
+        plan = probe.plan(facts, flow, probe.load_profile(facts.model_type), window.load_machine(a.machine),
+                          a.port, a.tokens, a.turns)
+        path = probe.write(facts, flow, plan)
+    except (ModelNotFound, WeightsError, workflow.WorkflowError, window.WindowError, probe.ProbeError, OSError) as e:
+        print(f"prune-kit: {e}", file=sys.stderr)
+        return 2
+    names = ", ".join(f"{p['name']} ({p['need_gib']:g} GiB)" for p in plan["points"])
+    run = f"prune-kit window {path} --machine {a.machine} --results {path.with_name('window.json')}"
+    print(f"window    {path}\npoints    {names}\n\nThe probe stops no worker. A window does: name each worker "
+          f"with --stop, and set the three deadlines.\nFirst the dry run, then the same command with no --dry-run:"
+          f"\n  {run} --stop WORKER --start-after TIME --boot-by TIME --restore-at TIME --dry-run")
+    return 0
 
 
 def parser() -> argparse.ArgumentParser:
@@ -170,6 +190,7 @@ def parser() -> argparse.ArgumentParser:
     c.add_argument("--served", metavar="NAME", help="the model name of the server (default: its first model)")
     c.add_argument("--out", metavar="FILE", help="the counts (default: runs/<model>/<workflow>/capture.jsonl)")
     c.add_argument("--limit", type=int, metavar="N", help="capture the first N segments only")
+    c.add_argument("--tokens", type=int, metavar="N", help="a sample: stop at N prompt tokens, in a fixed mixed order")
     c.add_argument("--generate", type=int, default=0, metavar="N", help="also count the routing of N new tokens")
     c.add_argument("--body", default="{}", metavar="JSON", help="more keys for each request, as a JSON mapping")
     c.add_argument("--hub", action="append", default=[], metavar="DIR", help="one more cache folder to search")
@@ -212,7 +233,17 @@ def parser() -> argparse.ArgumentParser:
                        ("restore-at", "each client stops, and the restore starts")):
         w.add_argument(f"--{name}", required=True, metavar="TIME", help=f'{text}, as "2026-11-28 22:30"')
     w.add_argument("--dry-run", action="store_true", help="print each command; run no command and stop no worker")
+    w.add_argument("--results", metavar="FILE", help="write the result and the memory of each point as JSON")
     w.set_defaults(run=cmd_window)
+    o = sub.add_parser("probe", help="write the window file of a probe: a sample capture and two or three cuts")
+    o.add_argument("model", help="the full model: a folder, or a name in a local cache")
+    o.add_argument("--workflow", required=True, metavar="FILE", help="the workflow file: its data, and its points")
+    o.add_argument("--machine", required=True, metavar="FILE", help="the machine file: the path of the server tools")
+    o.add_argument("--port", type=int, default=8890, help="the test port (default 8890); never a live port")
+    o.add_argument("--tokens", type=int, default=400_000, help="the prompt tokens of the sample capture")
+    o.add_argument("--turns", type=int, default=20, help="the held-out turns that each point scores")
+    o.add_argument("--hub", action="append", default=[], metavar="DIR", help="one more cache folder to search")
+    o.set_defaults(run=cmd_probe)
     return p
 
 

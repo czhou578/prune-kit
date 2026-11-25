@@ -1,0 +1,8 @@
+# The workflow of the Qwen prune by hand, with the data of the record (spark-moe-specialize). A probe of the full Qwen
+# with this file has a known answer: the full gate of the record gave +4.15% at K 208 and +8.0% at K 192.
+name: qwen-prune-record
+data:
+  sources: []                                    # the data exists: prune-kit data builds nothing for this file
+  folder: ~/Projects/dsv4-specialize/data/qwen-data
+memory: {peak_gib: 26.5, context: 128000, margin_gib: 4}
+points: [224, 208, 192]
