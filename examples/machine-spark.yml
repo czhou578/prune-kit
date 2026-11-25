@@ -1,6 +1,7 @@
 # The machine file of the DGX Spark of this project, for `prune-kit window --machine`.
 # CAUTION: A wrong stop or start command leaves a live worker down. Check each command against the machine before
 # the first real window, and run the window with --dry-run first.
+path: [/home/colin-spark/venvs/vllm033/bin]   # the folder of the server tools: a probe puts it first in PATH
 workers:
   deepseek:   # DeepSeek V4 Flash, port 8888, about 85 GiB
     stop: docker stop deepseek-v4-flash-code226t5-deepseek-v4-flash-1

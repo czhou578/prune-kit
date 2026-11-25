@@ -14,6 +14,7 @@ The rules:
 - The window ends with the restore of each stopped worker: on success, on each failure, and at ``restore_at``.
 """
 
+import json
 import os
 import re
 import signal
@@ -136,8 +137,9 @@ class DryRun(System):
 
 class Window:
     def __init__(self, machine: dict, stop, start_after: datetime, boot_by: datetime, restore_at: datetime,
-                 system: System | None = None, log=print):
+                 system: System | None = None, log=print, results=None):
         self.machine, self.stop, self.sys, self.log = machine, list(stop), system or System(), log
+        self.results, self.rows, self.lowest = results, [], float("inf")
         self.start_after, self.boot_by, self.restore_at = start_after, boot_by, restore_at
         self.stopped, self.limits = [], machine.get("memory", {})
 
@@ -206,6 +208,7 @@ class Window:
         def over():
             nonlocal low
             available, swap = self.sys.memory()
+            self.lowest = min(self.lowest, available)
             if available < self.limits.get("min_available_gib", 1) or swap < self.limits.get("min_free_swap_gib", 0):
                 low = f"{available:.1f} GiB available, {swap:.1f} GiB of swap free"
             return low or self.sys.done(process) is not None
@@ -248,6 +251,7 @@ class Window:
                     self.log(f"{point['name']}: not booted: {why}")
                     code = 1
                     continue
+                before, self.lowest = self.sys.memory()[0], float("inf")
                 process, codes = self.boot(point), [None]
                 fails = 0 if process else fails + 1
                 if process:
@@ -256,7 +260,13 @@ class Window:
                     finally:
                         self.down(point, process)
                 code = code if all(c == 0 for c in codes) else 1
+                self.rows.append({"name": point["name"], "booted": bool(process), "clients": codes,
+                                  "available_before_gib": round(before, 2),
+                                  "available_lowest_gib": round(min(self.lowest, before), 2)})
         except Exception as e:   # each failure ends with the safe action
             self.log(f"failure: {e}: the safe action, the restore")
             code = 1
-        return code if self.restore() else 3
+        restored = self.restore()
+        if self.results:   # the points that booted or failed, for the report of a probe
+            Path(self.results).write_text(json.dumps({"points": self.rows, "restored": restored}, indent=1))
+        return code if restored else 3

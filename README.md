@@ -26,7 +26,8 @@ stages. Stage III, the measurements, is not started: each of its runs needs a wi
 | `prune-kit build MODEL`: the pruned folder, and its check against the source | Built for safetensors checkpoints. Not for EXL3 |
 | `prune-kit gate`: the replay gates `nll` and `tools`: record, score, compare | Built |
 | `prune-kit window`: test servers in one window, with the restore of the workers | Built, with dry-run tests. No real window ran yet |
-| The probe, the gates `tasks`, `judge`, `speed` and `memory`, the report | Not built: stage III. Do them by hand with the blueprint |
+| `prune-kit probe MODEL`: the window file of a probe | Built for the Qwen model type. No probe ran yet |
+| The report of a probe, the gates `tasks`, `judge`, `speed` and `memory`, the decision report | Not built: stage III |
 
 ## Scope
 
@@ -209,6 +210,24 @@ The rules of a window:
 - The window always ends with the restore of each worker that it stopped. Exit code 3 means that the restore failed.
 
 Start a real window in tmux under `job run`, with a `--desc` and a `--log`, so that it shows on the jobs page.
+
+### The probe
+
+The probe measures two or three cuts in one window, before a full capture. `prune-kit probe` only writes the window
+file. It starts no server and stops no worker.
+
+```bash
+uv run prune-kit probe unsloth/Qwen3.6-35B-A3B-NVFP4-Fast --workflow examples/coding-fast-route.yml --machine examples/machine-spark.yml
+```
+
+- The window has one point for the full model and one point for each cut. The cuts are `points` of the workflow
+  file, or the first three default cuts.
+- The full model boots with its capture flag. Its clients capture a sample of 400,000 tokens, record 20 held-out
+  turns, score them, rank the sample, and build the pruned folder of each cut.
+- Each cut boots, and one client scores the same 20 turns.
+- The serve command comes from the profile of the model type, in `src/prune_kit/profiles/`. A model type with no
+  profile gets an error. Qwen3.5 and Qwen3.6 MoE have a profile.
+- The command prints the `prune-kit window` command for the file. Run the dry run first.
 
 ## Tests
 

@@ -133,23 +133,32 @@ def targets(sessions, split: str = "calibration"):
                 yield s, g, last
 
 
-def run(base, model, sessions, tools, out, experts, limit=None, extra=None, generate=0, post=None, log=print) -> int:
+def run(base, model, sessions, tools, out, experts, limit=None, extra=None, generate=0, post=None, log=print,
+        max_tokens=None) -> int:
     """Capture each calibration segment that ``out`` does not hold yet. A failed segment gets a row with the
-    error, and the run goes on. Return the number of failed segments."""
+    error, and the run goes on. Return the number of failed segments. ``max_tokens``: a sample. The segments come
+    in a fixed order by a hash, so that each session gives to the sample, and the run stops at that many prompt
+    tokens."""
     out = Path(out)
     rows = [json.loads(line) for line in out.open()] if out.exists() else []
     done = {(r["session"], r["segment"]) for r in rows if "error" not in r}
     seen = {r["prefix"] for r in rows if r.get("prefix_counted")}
-    todo, failed = list(targets(sessions))[:limit], 0
+    todo, failed = list(targets(sessions)), 0
+    if max_tokens:
+        todo.sort(key=lambda t: hashlib.sha256(f"{t[0]['id']}:{t[1]}".encode()).hexdigest())
+    todo, used = todo[:limit], sum(r["prompt_tokens"] for r in rows if "error" not in r)
     out.parent.mkdir(parents=True, exist_ok=True)
     with out.open("a") as f:
         for n, (s, g, i) in enumerate(todo, 1):
             if (s["id"], g) in done:
                 continue
+            if max_tokens and used >= max_tokens:
+                break
             row, began = {"session": s["id"], "segment": g, "index": i, "skill": s["skill"]}, time.monotonic()
             try:
                 row |= capture_one(base, model, s, g, i, tools, seen, experts, extra, generate, post)
                 seen.add(row["prefix"])
+                used += row["prompt_tokens"]
             except Exception as e:   # the row records the failure
                 row["error"], failed = f"{type(e).__name__}: {e}"[:300], failed + 1
             row["seconds"] = round(time.monotonic() - began, 1)
