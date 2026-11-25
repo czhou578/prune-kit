@@ -56,9 +56,9 @@ def test_the_probe_command_writes_a_window_file_that_the_dry_run_accepts(qwen_li
     path = Path(f"runs/{qwen_like.name}/w/probe/window.yml")
     assert f"window    {path}" in out and "points    full (9 GiB), k3 (9 GiB)" in out and "--dry-run" in out
     assert [p["name"] for p in window.load_window(path)] == ["full", "k3"]
-    assert cli.main(["window", str(path), "--machine", str(machine), "--stop", "qwen", "--dry-run", "--results", "r.json",
-                     "--start-after", "2099-01-03 22:00", "--boot-by", "2099-01-04 01:00",
-                     "--restore-at", "2099-01-04 03:00"]) == 0
+    times = ["--start-after", "2099-01-03 22:00", "--boot-by", "2099-01-04 01:00", "--restore-at", "2099-01-04 03:00"]
+    assert cli.main(["window", str(path), "--machine", str(machine), "--stop", "qwen", "--dry-run",
+                     "--results", "r.json", *times]) == 0
     assert "prune_kit.cli build" in capsys.readouterr().out and not Path("r.json").exists()
     (path.parent / "capture.jsonl").write_text("")
     assert cli.main(args) == 2 and "holds the files of an earlier probe (capture.jsonl)" in capsys.readouterr().err
