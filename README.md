@@ -12,13 +12,14 @@ One pipeline that prunes a local model for one workflow.
 
 ## Status
 
-Stage I of [the plan](plans/PLAN_PRUNE_KIT.md) is in work: the blueprint and the quick check.
+Stage I of [the plan](plans/PLAN_PRUNE_KIT.md) is built: the blueprint and the quick check. Stages II and III are
+not started.
 
 | Part | State |
 |---|---|
 | [BLUEPRINT.md](BLUEPRINT.md): the stages, the gates and the rules of a prune | Written |
 | `prune-kit stages`: the stages, and the command of each stage | Built |
-| `prune-kit preflight MODEL`: the quick check, from the model files only | Built for safetensors checkpoints |
+| `prune-kit preflight MODEL`: the quick check, from the model files only | Built for safetensors checkpoints, EXL3 included |
 | The other stages | Not built. Do them by hand with the blueprint |
 
 ## Scope
@@ -54,6 +55,10 @@ the live model servers. It prints three parts:
 
 The verdict is `GO`, `GO WITH WORK` with the parts that need work, or `NO-GO` for a model with no routed experts.
 The exit code is 0, 0 and 1. `--json` prints the same report as JSON.
+
+- A dense model gets `NO-GO` and a list of the other levers. A folder of GGUF files gets `NO-GO`.
+- A weight file with no read permission still counts: the preflight takes its tensor names from the index of the
+  folder and its size from the file. The line `sizes` shows this case.
 
 The preflight gives no estimate of how deep a cut can go. Only a measurement gives that depth: see §5.5 of the
 plan.

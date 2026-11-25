@@ -12,13 +12,17 @@ class WeightsError(Exception):
     """The folder has no weight file that prune-kit can read."""
 
 
+class FormatError(WeightsError):
+    """The weights have a format that prune-kit cannot copy by bytes."""
+
+
 @dataclass(frozen=True)
 class Tensor:
     name: str
     file: str               # the file name in the folder
     dtype: str
-    shape: tuple[int, ...]
-    size: int               # bytes
+    shape: tuple[int, ...] | None   # None: the header of the file is not readable
+    size: int                       # bytes; an equal share of the file size where the header is not readable
 
     @property
     def draft(self) -> bool:
@@ -38,14 +42,36 @@ def read_header(path: Path) -> dict:
     return header
 
 
+def _indexed(folder: Path) -> dict[str, list[str]]:
+    """``{file name: tensor names}`` from ``model.safetensors.index.json``, or ``{}`` with no index."""
+    path, out = folder / "model.safetensors.index.json", {}
+    if path.is_file():
+        for name, file in json.loads(path.read_text()).get("weight_map", {}).items():
+            out.setdefault(file, []).append(name)
+    return out
+
+
 def tensors(folder: Path) -> list[Tensor]:
-    """Each tensor of each ``*.safetensors`` file of the folder, in file order."""
-    files = sorted(Path(folder).glob("*.safetensors"))
+    """Each tensor of each ``*.safetensors`` file of the folder, in file order.
+
+    A file with no read permission gives the names of the index of the folder. Each of its tensors gets an equal
+    share of the file size. That is exact for a group of experts with the same tensors each (shape: None)."""
+    folder = Path(folder)
+    files = sorted(folder.glob("*.safetensors"))
+    if not files and any(folder.glob("*.gguf")):
+        raise FormatError(f"{folder}: GGUF files. prune-kit copies the bytes of safetensors files only")
     if not files:
         raise WeightsError(f"{folder}: no safetensors file. The weights are not on disk, or they have another format")
-    out = []
+    out, index = [], None
     for path in files:
-        for name, t in read_header(path).items():
-            start, end = t["data_offsets"]
-            out.append(Tensor(name, path.name, t["dtype"], tuple(t["shape"]), end - start))
+        try:
+            for name, t in read_header(path).items():
+                start, end = t["data_offsets"]
+                out.append(Tensor(name, path.name, t["dtype"], tuple(t["shape"]), end - start))
+        except PermissionError:
+            index = _indexed(folder) if index is None else index
+            names = index.get(path.name)
+            if not names:
+                raise WeightsError(f"{path}: no permission to read the file, and the index does not list it")
+            out += [Tensor(name, path.name, "?", None, path.stat().st_size // len(names)) for name in names]
     return out
