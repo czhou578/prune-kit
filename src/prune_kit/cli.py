@@ -144,13 +144,14 @@ def cmd_window(a) -> int:
     """Exit code 0: each point ran. 1: a point failed or did not run. 2: a fault of a file. 3: the restore failed."""
     try:
         machine, points = window.load_machine(a.machine), window.load_window(a.window)
+        release = window.load(a.window, {}).get("release", [])
         times = [datetime.fromisoformat(t) for t in (a.start_after, a.boot_by, a.restore_at)]
     except (window.WindowError, ValueError) as e:
         print(f"prune-kit: {e}", file=sys.stderr)
         return 2
     log = lambda line: print(f"{datetime.now():%F %T} {line}", flush=True)
     system = window.DryRun(log, machine, datetime.now()) if a.dry_run else None
-    return window.Window(machine, a.stop, *times, system, log, None if a.dry_run else a.results).run(points)
+    return window.Window(machine, a.stop, *times, system, log, None if a.dry_run else a.results, release).run(points)
 
 
 def cmd_probe(a) -> int:

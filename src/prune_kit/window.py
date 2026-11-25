@@ -57,6 +57,7 @@ def load_machine(path) -> dict:
 
 
 def load_window(path) -> list:
+    """The points of a window file. The key ``release`` of the file is a list of folders: see ``System.release``."""
     return load(path, {"points": ("name", "boot", "health")})["points"]
 
 
@@ -89,10 +90,31 @@ class System:
     def done(self, process) -> int | None:
         return process.poll()
 
-    def kill(self, process) -> None:
-        if process.poll() is None:
-            os.killpg(process.pid, signal.SIGTERM)
-            process.wait()
+    def kill(self, process, patience: float = 60) -> None:
+        """Stop the whole process group of a spawned command: SIGTERM, then SIGKILL after ``patience`` seconds. The
+        shell of the command ends at once, but a server can run on for some seconds, and a server that loads its
+        weights can ignore SIGTERM. So the group must be gone, and not only the shell."""
+        for sig, seconds in ((signal.SIGTERM, patience), (signal.SIGKILL, 10)):
+            try:
+                os.killpg(process.pid, sig)
+            except ProcessLookupError:
+                break
+            end = time.monotonic() + seconds
+            while time.monotonic() < end and self.alive(process.pid):
+                time.sleep(0.2)
+        process.wait()
+
+    @staticmethod
+    def alive(group: int) -> bool:
+        """Does the process group have a process that is not a zombie?"""
+        for stat in Path("/proc").glob("[0-9]*/stat"):
+            try:
+                fields = stat.read_text().rsplit(")", 1)[1].split()
+            except OSError:
+                continue
+            if int(fields[2]) == group and fields[0] != "Z":
+                return True
+        return False
 
     def get(self, url: str) -> str | None:
         try:
@@ -100,6 +122,21 @@ class System:
                 return reply.read().decode(errors="replace")
         except OSError:
             return None
+
+    def release(self, folders) -> None:
+        """Ask the kernel to drop the cached pages of each file of ``folders``. A server that loads its weights
+        with CUDA needs free memory: on a machine with unified memory, the page cache of a folder that a window
+        wrote or read can make that start fail (the Qwen restore of 2026-11-25)."""
+        os.sync()
+        for folder in folders:
+            for path in Path(folder).expanduser().rglob("*"):
+                try:
+                    if path.is_file() and path.stat().st_size >= 1 << 20:
+                        fd = os.open(path, os.O_RDONLY)
+                        os.posix_fadvise(fd, 0, 0, os.POSIX_FADV_DONTNEED)
+                        os.close(fd)
+                except OSError:
+                    pass
 
     def memory(self) -> tuple[float, float]:
         """The available memory and the free swap, in GiB."""
@@ -113,14 +150,23 @@ class DryRun(System):
     at once. A stop command of the machine file puts its worker down until its start command."""
 
     def __init__(self, log, machine: dict, start: datetime):
-        self.log, self.clock, self.off = log, start, set()
+        self.log, self.clock, self.off, self.serving = log, start, set(), False
+        self.live = {w[k] for w in machine["workers"].values() for k in ("health", "metrics")}
         self.effects = {w[k]: (k, w["health"]) for w in machine["workers"].values() for k in ("stop", "start")}
 
     now = lambda self: self.clock
     done = lambda self, process: 0
-    kill = lambda self, process: None
     memory = lambda self: (999.0, 999.0)
-    get = lambda self, url: None if url in self.off else ""
+
+    def get(self, url):
+        """A worker answers until its stop command. Each other URL is a test server: it answers after a spawn."""
+        return None if url in self.off or (url not in self.live and not self.serving) else ""
+
+    def kill(self, process):
+        self.serving = False
+
+    def release(self, folders):
+        self.log(f"dry run: drop the cached pages of {', '.join(map(str, folders))}")
 
     def sleep(self, seconds):
         self.clock += timedelta(seconds=seconds)
@@ -133,14 +179,15 @@ class DryRun(System):
 
     def spawn(self, command):
         self.log(f"dry run: {command}")
+        self.serving = True
         return command
 
 
 class Window:
     def __init__(self, machine: dict, stop, start_after: datetime, boot_by: datetime, restore_at: datetime,
-                 system: System | None = None, log=print, results=None):
+                 system: System | None = None, log=print, results=None, release=()):
         self.machine, self.stop, self.sys, self.log = machine, list(stop), system or System(), log
-        self.results, self.rows, self.lowest = results, [], float("inf")
+        self.results, self.rows, self.lowest, self.release = results, [], float("inf"), list(release)
         self.start_after, self.boot_by, self.restore_at = start_after, boot_by, restore_at
         self.stopped, self.limits = [], machine.get("memory", {})
 
@@ -184,8 +231,12 @@ class Window:
     def boot(self, point: dict):
         """Start the test server of a point. Return its process when it is healthy, or None after a failed boot."""
         need = point.get("need_gib", 0)
+        if self.release:
+            self.sys.release(self.release)
         if not self.wait(lambda: self.sys.memory()[0] >= need, 300):
             raise WindowError(f"{point['name']}: less than {need} GiB available ({self.sys.memory()[0]:.1f})")
+        if self.sys.get(point["health"]) is not None:
+            raise WindowError(f"{point['name']}: a server answers on {point['health']} before the boot")
         self.log(f"boot {point['name']} ({self.sys.memory()[0]:.1f} GiB available)")
         process = self.sys.spawn(point["boot"])
         healthy = lambda: self.sys.get(point["health"]) is not None or self.sys.done(process) is not None
@@ -196,9 +247,16 @@ class Window:
         return None
 
     def down(self, point: dict, process) -> None:
+        """Stop the test server of a point. The health URL must stop its answers: a server that still answers would
+        look like the next point."""
         self.sys.kill(process)
         if point.get("down"):
             self.sys.run(point["down"])
+        end = self.sys.now() + timedelta(seconds=120)
+        while self.sys.get(point["health"]) is not None:
+            if self.sys.now() >= end:
+                raise WindowError(f"{point['name']}: the test server still answers after its stop")
+            self.sys.sleep(POLL_S)
 
     def client(self, command: str) -> int | None:
         """Run a client with the memory watch. Return its exit code, or None when the watch or the deadline
@@ -229,8 +287,10 @@ class Window:
             worker = self.machine["workers"][name]
             for attempt in (1, 2):
                 self.log(f"restore the worker {name} (try {attempt})")
-                self.sys.run(worker["start"])
-                end = self.sys.now() + timedelta(seconds=RESTORE_S)
+                if self.release:
+                    self.sys.release(self.release)
+                started = self.sys.run(worker["start"]) == 0
+                end = self.sys.now() + timedelta(seconds=RESTORE_S if started else 60)   # failed: try again soon
                 while (up := self.sys.get(worker["health"]) is not None) is False and self.sys.now() < end:
                     self.sys.sleep(POLL_S)
                 if up:

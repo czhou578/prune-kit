@@ -181,3 +181,58 @@ def test_the_real_system_runs_bash_and_stops_the_whole_process_group(tmp_path):
     assert system.done(process) is not None and not child.exists()       # the child of the shell is gone too
     available, swap = system.memory()
     assert available > 0 and swap >= 0 and system.get("http://127.0.0.1:9/none") is None
+
+
+def test_a_server_that_answers_after_its_stop_delays_the_next_point():
+    fake = Fake()
+    fake.kill = lambda process: fake.log.append(f"kill {process['command']}") or setattr(fake, "dying", fake.clock)
+    get = fake.get
+    fake.get = lambda url: None if url == "test/health" and getattr(fake, "dying", None) and (
+        fake.clock - fake.dying).total_seconds() >= 40 and not fake.log[-1].startswith("serve") else get(url)
+    code, lines = run(fake)
+    boots = [n for n, c in enumerate(fake.log) if c.startswith("serve")]
+    plain = Fake()
+    run(plain)
+    assert code == 0 and len(boots) == 2 and fake.log[boots[1] - 1] == "down-full"
+    assert fake.clock - plain.clock >= timedelta(seconds=60)   # each stop waited until the health URL was silent
+
+
+def test_a_server_on_the_test_port_before_a_boot_is_a_safety_failure():
+    fake = Fake()
+    fake.up.add("test/health")
+    code, lines = run(fake)
+    assert code == 1 and "full: a server answers on test/health before the boot" in lines[1]
+    assert fake.log == ["stop-ds", "start-ds"]
+
+
+def test_the_real_system_stops_a_process_that_ignores_sigterm(tmp_path):
+    system = window.System()
+    process = system.spawn(f"(trap '' TERM; echo $BASHPID > {tmp_path}/child; sleep 60) & wait")
+    while not (tmp_path / "child").exists() or not (tmp_path / "child").read_text().strip():
+        system.sleep(0.05)
+    child = int((tmp_path / "child").read_text())
+    assert window.System.alive(process.pid)
+    system.kill(process, patience=1)
+    assert not window.System.alive(process.pid) and not Path(f"/proc/{child}").exists()
+
+
+def test_a_failed_start_gets_its_second_try_soon_and_the_cache_is_released():
+    fake, released, codes = Fake(restores=False), [], iter([1, 0])   # the first start command fails
+    fake.release = released.append
+    run_command, get = fake.run, fake.get
+    start = lambda command: fake.log.append(command) or next(codes)
+    fake.run = lambda command: start(command) if command == "start-ds" else run_command(command)
+    fake.get = lambda url: "" if url == "ds/health" and fake.log.count("start-ds") == 2 else get(url)
+    lines = []
+    w = window.Window(MACHINE, ["deepseek"], at(-1), at(120), at(240), fake, lines.append, release=["/data/run"])
+    assert w.run(POINTS[1:]) == 0 and fake.log.count("start-ds") == 2
+    assert released == [["/data/run"]] * 3                 # before the boot, and before each start
+    assert "restore the worker deepseek (try 2)" in lines and fake.clock - T0 < timedelta(minutes=10)
+
+
+def test_release_drops_the_cached_pages_of_large_files(tmp_path):
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "sub/big.bin").write_bytes(b"x" * (2 << 20))
+    (tmp_path / "small.txt").write_text("x")
+    window.System().release([tmp_path, tmp_path / "none"])          # no error for a folder that does not exist
+    assert (tmp_path / "sub/big.bin").stat().st_size == 2 << 20

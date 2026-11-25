@@ -102,7 +102,8 @@ def plan(facts: Facts, workflow, profile: dict, machine: dict, port: int = 8890,
              f"--draft {profile.get('draft', 'rank')} --out {run}/k{k}" for k in ks]
     points = [point("full", facts.folder, 0, "" if ranked else profile.get("capture_flag", ""), full)]
     points += [point(f"k{k}", run / f"k{k}", facts.freed(k), "", [score(f"k{k}")]) for k in ks]
-    return {"points": points}
+    # The window reads the full model and writes one folder for each cut: the runner drops their cached pages.
+    return {"release": [str(facts.folder), str(run)], "points": points}
 
 
 def write(facts: Facts, workflow, window: dict) -> Path:
