@@ -1,0 +1,17 @@
+# The workflow of the Qwen prune: the fast coding route of the gateway.
+# Use: prune-kit preflight unsloth/Qwen3.6-35B-A3B-NVFP4-Fast --workflow examples/coding-fast-route.yml
+name: coding-fast-route
+data:
+  sources:
+    - {kind: gateway_records, route: second-model}     # ~/.local/share/model-gateway/records
+    - {kind: claude_code, projects: ["*"]}             # ~/.claude/projects
+    - {kind: repo, paths: [~/Projects/model-benchmarks]}
+  held_out: {share: 0.15, projects: [nanoGPT-inference]}
+  min_calibration_tokens: 1000000
+memory: {peak_gib: 26.5, context: 128000, margin_gib: 4}
+gates:
+  nll:   {limit_pct: 3.0, turns: 60}
+  tools: {names_min_pct: 98, decisions_max_drop: 3}
+  tasks: {sets: [dev, heldout], seeds: 3}
+  judge: {turns: 30, model: deepseek}
+points: auto            # or a list of K values

@@ -25,6 +25,7 @@ LEVERS = (
     ("context", "a smaller KV cache pin, where the KV need grows with the context: 0.75 GiB on DeepSeek"),
     ("layers", "not a lever: on DeepSeek each removed layer cost +2.15% NLL or more"),
 )
+HELD = "the two prunes by hand: Qwen holds a cut of 19% of its experts with a cost, and DeepSeek holds 31%"
 
 
 @dataclass
@@ -97,10 +98,20 @@ def verdict(f: Facts, items: list[Check]) -> str:
     return "GO WITH WORK: " + ", ".join(work) if work else "GO"
 
 
-def report(f: Facts, ks=None, available: int | None = None) -> dict:
+def need(f: Facts, workflow) -> dict | None:
+    """The cut that reaches the peak goal of the workflow: the largest K that frees the need. None with no goal."""
+    goal = workflow.need_bytes(f.total_bytes)
+    if goal is None:
+        return None
+    k = next((k for k in range(f.max_experts, (f.per_token or 1) - 1, -1) if f.freed(k) >= goal), None)
+    return {**workflow.memory, "bytes": goal, "k": k, "share": (1 - k / f.max_experts) if k else None}
+
+
+def report(f: Facts, ks=None, available: int | None = None, workflow=None) -> dict:
     """The preflight of one model as plain data. ``text`` prints it."""
     items = checks(f, available)
     return {
+        "workflow": workflow.name if workflow else None, "need": need(f, workflow) if workflow else None,
         "folder": str(f.folder), "model_type": f.model_type, "moe": f.is_moe, "layout": f.layout, "quant": f.quant,
         "layers": len(f.experts), "experts_min": min(f.experts.values(), default=0), "experts_max": f.max_experts,
         "experts_total": sum(f.experts.values()), "per_token": f.per_token, "loop": f.loop,
@@ -123,6 +134,19 @@ def text(r: dict) -> str:
                   f"({r['routed_bytes'] / r['total_bytes']:.0%} of the weights)",
                   "", "cut       freed        of the weights"]
         lines += [f"K {c['k']:<7} {c['freed_bytes'] / GIB:5.2f} GiB    {c['share']:.0%}" for c in r["cuts"]]
+    if n := r.get("need"):
+        at = f" at a context of {n['context']:,} tokens" if n["context"] else ""
+        lines += ["", f"goal      a peak of {n['peak_gib']:g} GiB{at}, for the workflow {r['workflow']}"]
+        if n["bytes"] <= 0:
+            lines.append("need      no cut: the model fits the goal")
+        elif n["k"] is None:
+            lines.append(f"need      free {n['bytes'] / GIB:.2f} GiB: no cut of the experts reaches it")
+        else:
+            lines += [f"need      free {n['bytes'] / GIB:.2f} GiB: K {n['k']} or lower ({n['share']:.0%} of the experts)",
+                      f"          {HELD}"]
+        if n["overhead_gib"] is None:
+            lines.append("          a lower limit: memory.overhead_gib is not set, so the need has the weights only, "
+                         "and not the KV pin or the overhead of the server")
     lines += ["", "can the pipeline run?"]
     lines += [f"  {c['name']:<15} {c['state']:<8} {c['note']}" for c in r["checks"]]
     if not r["moe"]:

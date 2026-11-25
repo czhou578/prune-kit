@@ -3,7 +3,9 @@ name = "prune-kit"
 version = "0.1.0"
 description = "One pipeline that prunes a local model for one workflow."
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "pyyaml>=6",
+]
 
 [project.scripts]
 prune-kit = "prune_kit.cli:main"
