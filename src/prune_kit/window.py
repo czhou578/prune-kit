@@ -57,6 +57,7 @@ def load_machine(path) -> dict:
 
 
 def load_window(path) -> list:
+    """The points of a window file. The key ``release`` of the file is a list of folders: see ``System.release``."""
     return load(path, {"points": ("name", "boot", "health")})["points"]
 
 
@@ -122,6 +123,21 @@ class System:
         except OSError:
             return None
 
+    def release(self, folders) -> None:
+        """Ask the kernel to drop the cached pages of each file of ``folders``. A server that loads its weights
+        with CUDA needs free memory: on a machine with unified memory, the page cache of a folder that a window
+        wrote or read can make that start fail (the Qwen restore of 2026-11-25)."""
+        os.sync()
+        for folder in folders:
+            for path in Path(folder).expanduser().rglob("*"):
+                try:
+                    if path.is_file() and path.stat().st_size >= 1 << 20:
+                        fd = os.open(path, os.O_RDONLY)
+                        os.posix_fadvise(fd, 0, 0, os.POSIX_FADV_DONTNEED)
+                        os.close(fd)
+                except OSError:
+                    pass
+
     def memory(self) -> tuple[float, float]:
         """The available memory and the free swap, in GiB."""
         with open("/proc/meminfo") as f:
@@ -149,6 +165,9 @@ class DryRun(System):
     def kill(self, process):
         self.serving = False
 
+    def release(self, folders):
+        self.log(f"dry run: drop the cached pages of {', '.join(map(str, folders))}")
+
     def sleep(self, seconds):
         self.clock += timedelta(seconds=seconds)
 
@@ -166,9 +185,9 @@ class DryRun(System):
 
 class Window:
     def __init__(self, machine: dict, stop, start_after: datetime, boot_by: datetime, restore_at: datetime,
-                 system: System | None = None, log=print, results=None):
+                 system: System | None = None, log=print, results=None, release=()):
         self.machine, self.stop, self.sys, self.log = machine, list(stop), system or System(), log
-        self.results, self.rows, self.lowest = results, [], float("inf")
+        self.results, self.rows, self.lowest, self.release = results, [], float("inf"), list(release)
         self.start_after, self.boot_by, self.restore_at = start_after, boot_by, restore_at
         self.stopped, self.limits = [], machine.get("memory", {})
 
@@ -212,6 +231,8 @@ class Window:
     def boot(self, point: dict):
         """Start the test server of a point. Return its process when it is healthy, or None after a failed boot."""
         need = point.get("need_gib", 0)
+        if self.release:
+            self.sys.release(self.release)
         if not self.wait(lambda: self.sys.memory()[0] >= need, 300):
             raise WindowError(f"{point['name']}: less than {need} GiB available ({self.sys.memory()[0]:.1f})")
         if self.sys.get(point["health"]) is not None:
@@ -266,8 +287,10 @@ class Window:
             worker = self.machine["workers"][name]
             for attempt in (1, 2):
                 self.log(f"restore the worker {name} (try {attempt})")
-                self.sys.run(worker["start"])
-                end = self.sys.now() + timedelta(seconds=RESTORE_S)
+                if self.release:
+                    self.sys.release(self.release)
+                started = self.sys.run(worker["start"]) == 0
+                end = self.sys.now() + timedelta(seconds=RESTORE_S if started else 60)   # failed: try again soon
                 while (up := self.sys.get(worker["health"]) is not None) is False and self.sys.now() < end:
                     self.sys.sleep(POLL_S)
                 if up:

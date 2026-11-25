@@ -214,3 +214,25 @@ def test_the_real_system_stops_a_process_that_ignores_sigterm(tmp_path):
     assert window.System.alive(process.pid)
     system.kill(process, patience=1)
     assert not window.System.alive(process.pid) and not Path(f"/proc/{child}").exists()
+
+
+def test_a_failed_start_gets_its_second_try_soon_and_the_cache_is_released():
+    fake, released, codes = Fake(restores=False), [], iter([1, 0])   # the first start command fails
+    fake.release = released.append
+    run_command, get = fake.run, fake.get
+    start = lambda command: fake.log.append(command) or next(codes)
+    fake.run = lambda command: start(command) if command == "start-ds" else run_command(command)
+    fake.get = lambda url: "" if url == "ds/health" and fake.log.count("start-ds") == 2 else get(url)
+    lines = []
+    w = window.Window(MACHINE, ["deepseek"], at(-1), at(120), at(240), fake, lines.append, release=["/data/run"])
+    assert w.run(POINTS[1:]) == 0 and fake.log.count("start-ds") == 2
+    assert released == [["/data/run"]] * 3                 # before the boot, and before each start
+    assert "restore the worker deepseek (try 2)" in lines and fake.clock - T0 < timedelta(minutes=10)
+
+
+def test_release_drops_the_cached_pages_of_large_files(tmp_path):
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "sub/big.bin").write_bytes(b"x" * (2 << 20))
+    (tmp_path / "small.txt").write_text("x")
+    window.System().release([tmp_path, tmp_path / "none"])          # no error for a folder that does not exist
+    assert (tmp_path / "sub/big.bin").stat().st_size == 2 << 20
