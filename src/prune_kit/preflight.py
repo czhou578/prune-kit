@@ -142,8 +142,8 @@ def text(r: dict) -> str:
         elif n["k"] is None:
             lines.append(f"need      free {n['bytes'] / GIB:.2f} GiB: no cut of the experts reaches it")
         else:
-            lines += [f"need      free {n['bytes'] / GIB:.2f} GiB: K {n['k']} or lower ({n['share']:.0%} of the experts)",
-                      f"          {HELD}"]
+            lines += [f"need      free {n['bytes'] / GIB:.2f} GiB: K {n['k']} or lower "
+                      f"({n['share']:.0%} of the experts)", f"          {HELD}"]
         if n["overhead_gib"] is None:
             lines.append("          a lower limit: memory.overhead_gib is not set, so the need has the weights only, "
                          "and not the KV pin or the overhead of the server")
