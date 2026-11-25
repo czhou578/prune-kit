@@ -1,11 +1,11 @@
-"""Command line: prune-kit stages | preflight | data | capture | rank | build."""
+"""Command line: prune-kit stages | preflight | data | capture | rank | build | gate."""
 
 import argparse
 import json
 import sys
 from pathlib import Path
 
-from . import __version__, capture, preflight, rank, sessions, sources, st_moe, stages, workflow
+from . import __version__, capture, preflight, rank, replay, sessions, sources, st_moe, stages, workflow
 from .facts import inspect
 from .resolve import ModelNotFound, resolve, slug
 from .weights import FormatError, WeightsError
@@ -49,14 +49,19 @@ def cmd_data(a) -> int:
     return 0 if r["ok"] else 1
 
 
+def _tools(folder: Path):
+    """The tool definitions of a data folder: a list, or a mapping with the key ``tools``. None with no file."""
+    tools = json.loads(t.read_text()) if (t := folder / "tools.json").exists() else None
+    return tools.get("tools") if isinstance(tools, dict) else tools
+
+
 def cmd_capture(a) -> int:
     """Exit code 0: each segment has its counts. 1: a segment failed. 2: a fault before the first request."""
     try:
         flow, folder = workflow.load(a.workflow), resolve(a.model, a.hub)
         experts = inspect(folder).max_experts
         data = sessions.load(flow.folder / "sessions.jsonl")
-        tools = json.loads(t.read_text()) if (t := flow.folder / "tools.json").exists() else None
-        tools = tools.get("tools") if isinstance(tools, dict) else tools
+        tools = _tools(flow.folder)
         served = a.served or capture.post(a.base_url, "/v1/models", None)["data"][0]["id"]
     except (ModelNotFound, WeightsError, workflow.WorkflowError, OSError, ValueError) as e:
         print(f"prune-kit: {e}", file=sys.stderr)
@@ -97,6 +102,33 @@ def cmd_build(a) -> int:
         print(f"prune-kit: {e}", file=sys.stderr)
         return 2
     return 0
+
+
+def cmd_gate(a) -> int:
+    """Exit code 0: done, and with --compare each gate passes. 1: a gate fails or a turn failed. 2: a fault."""
+    try:
+        flow = workflow.load(a.workflow) if a.workflow else None
+        if a.compare:
+            result = replay.compare(*map(sessions.load, a.compare), flow.gates if flow else replay.LIMITS)
+            print(replay.text(result))
+            return 0 if all(result["gates"].values()) else 1
+        if not (a.out and (a.data or flow) and (a.base_url or a.from_data) and (a.record or a.recorded)):
+            raise ValueError("--record and --score need --out, --base-url, and --data or --workflow; "
+                             "--score also needs --recorded")
+        folder = Path(a.data) if a.data else flow.folder
+        data, tools = sessions.load(folder / "sessions.jsonl"), _tools(folder)
+        served = a.served or (None if a.from_data else capture.post(a.base_url, "/v1/models", None)["data"][0]["id"])
+        if a.record:
+            turns = a.n or (flow.gates["nll"]["turns"] if flow else 60)
+            failed = replay.record(a.base_url, served, data, tools, turns, a.out, from_data=a.from_data)
+        else:
+            failed = replay.score(a.base_url, served, data, tools, sessions.load(a.recorded), a.out)
+    except (workflow.WorkflowError, OSError, ValueError, KeyError) as e:
+        print(f"prune-kit: {e}", file=sys.stderr)
+        return 2
+    done = "recorded" if a.record else "scored"
+    print(f"{done}  {a.out}" + (f": {failed} turns failed; start the command again" if failed else ""))
+    return 1 if failed else 0
 
 
 def parser() -> argparse.ArgumentParser:
@@ -143,6 +175,20 @@ def parser() -> argparse.ArgumentParser:
     b.add_argument("--check", action="store_true", help="only compare a pruned folder that exists with its source")
     b.add_argument("--hub", action="append", default=[], metavar="DIR", help="one more cache folder to search")
     b.set_defaults(run=cmd_build)
+    g = sub.add_parser("gate", help="the replay gate: record turns of the full model, score them, compare two scores")
+    what = g.add_mutually_exclusive_group(required=True)
+    what.add_argument("--record", action="store_true", help="the server writes one turn for each held-out target")
+    what.add_argument("--score", action="store_true", help="the server scores the recorded turns")
+    what.add_argument("--compare", nargs=2, metavar=("REF", "NEW"), help="compare two score files with the limits")
+    g.add_argument("--workflow", metavar="FILE", help="the workflow file: its data folder and its limits")
+    g.add_argument("--data", metavar="DIR", help="a data folder with sessions.jsonl, in place of the workflow's")
+    g.add_argument("--base-url", metavar="URL", help="the server, for example http://127.0.0.1:8889")
+    g.add_argument("--served", metavar="NAME", help="the model name of the server (default: its first model)")
+    g.add_argument("--recorded", metavar="FILE", help="--score: the recorded turns")
+    g.add_argument("--out", metavar="FILE", help="the output of --record or --score; a second start continues it")
+    g.add_argument("--n", type=int, metavar="N", help="--record: the number of turns (default: gates.nll.turns)")
+    g.add_argument("--from-data", action="store_true", help="--record: the own turns of the data, with no server")
+    g.set_defaults(run=cmd_gate)
     return p
 
 
