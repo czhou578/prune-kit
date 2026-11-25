@@ -21,7 +21,7 @@ stages, is in work. Stage III is not started.
 | `prune-kit stages`: the stages, and the command of each stage | Built |
 | `prune-kit preflight MODEL`: the quick check, from the model files only | Built for safetensors checkpoints, EXL3 included |
 | The workflow file, and `prune-kit preflight MODEL --workflow FILE` | Built |
-| The data format: `sessions.jsonl`, the held-out split, the secret pass | Built. No command builds the sessions yet |
+| `prune-kit data FILE`: the sessions of a workflow, the held-out split, the secret pass | Built |
 | The other stages | Not built. Do them by hand with the blueprint |
 
 ## Scope
@@ -78,6 +78,28 @@ uv run prune-kit preflight unsloth/Qwen3.6-35B-A3B-NVFP4-Fast --workflow example
 With a workflow file, the preflight adds the cut that reaches `memory.peak_gib`: the largest K that frees the need.
 Set `memory.overhead_gib` to the measured KV pin plus the overhead of the server. Without it, the need holds the
 weights only, and the preflight says that the need is a lower limit.
+
+### The data of a workflow
+
+```bash
+uv run prune-kit data examples/coding-fast-route.yml
+```
+
+`prune-kit data FILE` reads each source of the workflow file and writes `sessions.jsonl` into the data folder. It
+prints the table of the sources, and it compares the totals with the minimums. The exit code is 0 when the data
+meets the minimums, and 1 when it does not. `--stats` reads the sessions that exist and builds nothing.
+
+| Kind of source | Content | Keys |
+|---|---|---|
+| `claude_code` | The Claude Code transcripts, one session per transcript | `root`, `projects` (patterns), `map`, `budget` |
+| `gateway_records` | The records of `model-gateway`, one session per conversation | `root`, `route`, `map`, `budget` |
+| `repo` | Code files of a repository, each as a file read | `paths`, `files`, `budget` |
+| `sessions` | A `sessions.jsonl` that exists, with its own split | `path`, `sources` |
+
+- `budget` is the largest count of calibration tokens that the source gives. Each project gives one segment in turn.
+- `map: hermes` renames the Claude Code tools to the Hermes tools, as the Qwen prune did.
+- The Hermes sessions of the stock bot come in as `sessions`: the bot repo has the export tool for them.
+- A session of a project in `held_out.projects` is held out. Of the other sessions, a hash holds out `share`.
 
 The preflight also reads `sessions.jsonl` in the data folder of the workflow (`data.folder`, default
 `runs/data/<name>`). It prints the sessions, the segments, the tokens and the target turns of each source and split.
