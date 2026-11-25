@@ -1,7 +1,8 @@
 # Plan: prune-kit, one pipeline that prunes a local model for one workflow
 
-Status: 2026-11-24. Stage I (§6) is built on four local branches, and gate A (§7) passes for Qwen, Inkling and
-DeepSeek. No pull request is open yet. Stages II and III are not started. The project name is a placeholder.
+Status: 2026-11-24. Stage I (§6) is built and merged (pull requests 1 to 4), and gate A (§7) passes for Qwen,
+Inkling and DeepSeek. This is the stop point of §6: stages II and III are not started. The project name is a
+placeholder.
 
 ## In simple words
 
