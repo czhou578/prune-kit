@@ -22,6 +22,7 @@ stages, is in work. Stage III is not started.
 | `prune-kit preflight MODEL`: the quick check, from the model files only | Built for safetensors checkpoints, EXL3 included |
 | The workflow file, and `prune-kit preflight MODEL --workflow FILE` | Built |
 | `prune-kit data FILE`: the sessions of a workflow, the held-out split, the secret pass | Built |
+| `prune-kit build MODEL`: the pruned folder, and its check against the source | Built for safetensors checkpoints. Not for EXL3 |
 | The other stages | Not built. Do them by hand with the blueprint |
 
 ## Scope
@@ -109,6 +110,23 @@ minimum, the verdict lists `data` as work.
 - CAUTION: `sessions.jsonl` can hold private text of your transcripts. Keep it out of git: `runs/` is in
   `.gitignore`. The secret pass replaces only the strings that look like keys.
 - A token count of the data is an estimate: the characters divided by 4.
+
+### The pruned folder
+
+```bash
+uv run prune-kit build unsloth/Qwen3.6-35B-A3B-NVFP4-Fast --rank rank.json --k 208 --out runs/qwen-k208
+```
+
+`prune-kit build` writes a copy of the model with K experts in each layer. It keeps the first K experts of each
+layer of the rank file, and it gives them the ids 0 to K-1. It copies bytes: it does no new quantization, and it
+never changes the full model. Then it compares each kept tensor with its source, byte for byte.
+
+- The output folder must not exist. The build stops before it writes, when the disk has too little free space.
+- `--draft` sets the experts of the draft model: `rank` (the rank layer after the last layer of the model), `first`
+  (the experts 0 to K-1), or `keep` (the whole draft: serve the draft from the full model).
+- `--check` only compares a pruned folder that exists with its source.
+- `scripts/gate_b.sh` builds K 208 of the full Qwen and compares each file with the folder of the prune by hand.
+  It needs that folder, and about 19 GiB of disk for some minutes.
 
 ## Tests
 

@@ -4,7 +4,7 @@ import struct
 
 import pytest
 
-from prune_kit import st_moe
+from prune_kit import cli, st_moe
 
 
 def store(path, tensors):
@@ -146,3 +146,16 @@ def test_prune_refuses_a_wrong_k_a_short_rank_and_a_folder_that_exists(source, t
     st_moe.prune(source, tmp_path / "x", RANK, 2)
     with pytest.raises(FileExistsError):
         st_moe.prune(source, tmp_path / "x", RANK, 2)
+
+
+def test_build_command_prunes_and_checks(source, tmp_path, capsys):
+    rank, out = tmp_path / "rank.json", tmp_path / "k2"
+    rank.write_text(json.dumps(RANK))
+    assert cli.main(["build", str(source), "--rank", str(rank), "--k", "2", "--out", str(out)]) == 0
+    text = capsys.readouterr().out
+    assert "kept 12 tensors, dropped 4" in text and "check: 12 tensors are equal to their source" in text
+    assert cli.main(["build", str(source), "--out", str(out), "--check"]) == 0
+    assert cli.main(["build", str(source), "--out", str(tmp_path / "x")]) == 2
+    assert "a build needs --rank and --k" in capsys.readouterr().err
+    assert cli.main(["build", str(source), "--rank", str(rank), "--k", "9", "--out", str(tmp_path / "x")]) == 2
+    assert cli.main(["build", str(source), "--rank", str(rank), "--k", "2", "--out", str(out)]) == 2   # it exists

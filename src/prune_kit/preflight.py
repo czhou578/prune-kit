@@ -18,6 +18,7 @@ BY_HAND = {
     "deepseek_v4": {"prune": "tools/prune_experts.py", "draft": "the target skips the draft tensors",
                     "capture": "the server patch of image-patch/ with Model Runner V1"},
 }
+PROVEN = {"qwen3_5_moe"}   # st_moe gives the folder of the prune by hand for these model types (gate B)
 WORK = ("no", "unknown")   # the states that need work before the pipeline can run
 # What a dense model can do in place of a prune, with the result of each lever in spark-moe-specialize.
 LEVERS = (
@@ -51,6 +52,17 @@ def available_bytes() -> int | None:
         return None
 
 
+def prune_tool(f: Facts, hand: str) -> Check:
+    """Can ``prune-kit build`` (st_moe) write the pruned folder of this model?"""
+    if f.hash_layers or f.unread_files:
+        why = "the token tables of the hash layers" if f.hash_layers else "weight files with no read permission"
+        return Check("prune tool", "no", f"prune-kit build does not handle {why}{hand}")
+    if f.model_type in PROVEN:
+        return Check("prune tool", "yes", "prune-kit build: it gives the folder of the prune by hand, byte for byte")
+    return Check("prune tool", "unknown", f"prune-kit build copies the {f.layout} layout, "
+                                          "but no server has loaded such a copy of this model type")
+
+
 def checks(f: Facts, available: int | None) -> list[Check]:
     """The answers to "can the pipeline run?" that the files give."""
     if not f.is_moe:
@@ -61,7 +73,7 @@ def checks(f: Facts, available: int | None) -> list[Check]:
     count = f"{high}" if low == high else f"{low} to {high}"
     out = [
         Check("routed experts", "yes", f"{count} per layer, {f.per_token or '?'} per token"),
-        Check("prune tool", "no", f"prune-kit has no prune for the {f.layout} layout yet{hand('prune')}"),
+        prune_tool(f, hand("prune")),
         Check("capture", "yes" if "capture" in known else "unknown",
               known.get("capture", "not proven for this model type: test the capture flag of its server")),
         Check("mask", "info", "possible: the router has a bias" if f.router_bias

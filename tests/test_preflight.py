@@ -19,16 +19,15 @@ def test_default_cuts():
 
 
 def test_known_model_type_needs_only_the_prune_tool(qwen_like):
-    assert states(qwen_like) == {"routed experts": "yes", "prune tool": "no", "capture": "yes", "mask": "info",
+    assert states(qwen_like) == {"routed experts": "yes", "prune tool": "yes", "capture": "yes", "mask": "info",
                                  "draft model": "yes"}
     r = preflight.report(inspect(qwen_like))
-    assert r["verdict"] == "GO WITH WORK: prune tool"
-    assert "by hand: tools/qwen_prune.py" in preflight.text(r)
+    assert r["verdict"] == "GO" and "prune-kit build: it gives the folder of the prune by hand" in preflight.text(r)
 
 
 def test_new_model_type_lists_each_missing_part(inkling_like):
     s = states(inkling_like, available=10)
-    assert s == {"routed experts": "yes", "prune tool": "no", "capture": "unknown", "mask": "info",
+    assert s == {"routed experts": "yes", "prune tool": "unknown", "capture": "unknown", "mask": "info",
                  "draft model": "info", "loop": "info", "memory": "info"}
     r = preflight.report(inspect(inkling_like), available=10)
     assert r["verdict"] == "GO WITH WORK: prune tool, capture"
@@ -68,7 +67,7 @@ def test_command_prints_text_and_json(qwen_like, capsys):
     assert "K 3" in capsys.readouterr().out
     assert cli.main(["preflight", str(qwen_like), "--json"]) == 0
     r = json.loads(capsys.readouterr().out)
-    assert r["moe"] is True and r["verdict"].startswith("GO WITH WORK") and r["checks"][0]["state"] == "yes"
+    assert r["moe"] is True and r["verdict"] == "GO" and r["checks"][0]["state"] == "yes"
 
 
 def test_command_with_a_model_that_cannot_be_read(tmp_path, capsys):
