@@ -28,6 +28,7 @@ import yaml
 
 DAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 BOOT_S, IDLE_S, RESTORE_S, POLL_S = 900, 1800, 1200, 15
+SHELL = "/bin/bash"   # the commands of a machine file are bash: `kill -TERM -- -PID` is not valid in sh
 BUSY = re.compile(r"^vllm:num_requests_(?:running|waiting)\{[^}]*\} (\S+)", re.M)
 
 
@@ -80,10 +81,10 @@ class System:
         time.sleep(seconds)
 
     def run(self, command: str) -> int:
-        return subprocess.run(command, shell=True).returncode
+        return subprocess.run(command, shell=True, executable=SHELL).returncode
 
     def spawn(self, command: str):
-        return subprocess.Popen(command, shell=True, start_new_session=True)
+        return subprocess.Popen(command, shell=True, executable=SHELL, start_new_session=True)
 
     def done(self, process) -> int | None:
         return process.poll()

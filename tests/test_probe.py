@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from prune_kit import capture, cli, probe, window, workflow
+from prune_kit import capture, cli, probe, rank, window, workflow
 from prune_kit.facts import inspect
 
 from test_capture import Server, data
@@ -83,3 +83,83 @@ def test_a_sample_capture_stops_at_its_tokens_and_mixes_the_sessions(tmp_path):
     capture.run("http://x", "m", sessions_, None, tmp_path / "c.jsonl", 6, post=Server(), log=log.append, max_tokens=20)
     assert len((tmp_path / "c.jsonl").read_text().splitlines()) == len(rows)      # a second start adds nothing
     assert yaml.safe_load((probe.PROFILES / "qwen3_5_moe.yml").read_text())["capture_flag"].startswith("--enable")
+
+
+RECORD = Path.home() / "Projects/dsv4-specialize/results"
+
+
+def scores(path, nll, turns=6):
+    """A score file: each turn has 100 tokens, and the NLL grows a little from turn to turn."""
+    rows = [{"session": "s", "segment": 0, "index": n, "tokens": 100, "nll": nll * (1 + n / 100), "top1": 90,
+             "decision_ok": True, "tool_calls": 2, "tool_names_ok": 2} for n in range(turns)]
+    path.write_text("".join(json.dumps(r) + "\n" for r in rows))
+
+
+def ran(qwen_like, tmp_path, costs):
+    """The files of a probe that ran on the test model (4 experts in each layer). ``costs``: ``{k: NLL}``."""
+    run = tmp_path / "probe"
+    run.mkdir()
+    counts = [[70, 20, 8, 2], [2, 8, 20, 70]]
+    rows = [{"session": "s", "segment": n, "prompt_tokens": 50, "unfilled_rows": 0, "counts": counts} for n in range(4)]
+    (run / "capture.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
+    (run / "rank.json").write_text(json.dumps(rank.rank(rows)))
+    scores(run / "score-full.jsonl", 30.0)
+    for k, nll in costs.items():
+        scores(run / f"score-k{k}.jsonl", nll)
+    return run
+
+
+def test_the_report_gives_the_cost_of_each_cut_and_the_estimate_of_the_line(qwen_like, tmp_path):
+    facts, w = inspect(qwen_like), flow(tmp_path)
+    run = ran(qwen_like, tmp_path, {3: 30.3, 2: 31.5})     # +1% and +5%, for 2% and 10% of removed routing
+    (run / "window.json").write_text(json.dumps({"points": [
+        {"name": "full", "available_before_gib": 34.0, "available_lowest_gib": 5.5}]}))
+    r = probe.report(facts, w, run)
+    k3, k2 = r["points"]
+    assert (k3["k"], k3["freed_bytes"], k2["freed_bytes"]) == (3, 220, 440) and k3["overlap"] == 1.0
+    assert k3["removed_pct"] == pytest.approx(2.0) and k3["nll_change_pct"] == pytest.approx(1.0)
+    assert k3["band"] == pytest.approx([1.0, 1.0]) and (k3["nll_gate"], k2["nll_gate"]) == ("pass", "fail")
+    assert r["slope"] == pytest.approx(52 / 104) and r["estimate_k"] == 3 and r["full_peak_gib"] == 28.5
+    out = probe.text(r)
+    assert "4 segments, 200 prompt tokens" in out and "the nll gate holds down to about K 3" in out
+    assert "+0.50% NLL for each 1% of removed routing" in out and "the full model used 28.5 GiB at the peak" in out
+
+
+def test_a_band_that_holds_the_limit_is_near_the_limit(qwen_like, tmp_path):
+    run = ran(qwen_like, tmp_path, {3: 30.9})
+    rows = [json.loads(line) for line in (run / "score-k3.jsonl").open()]
+    for n, r in enumerate(rows):
+        r["nll"] *= 1.3 if n % 2 else 0.75             # the turns do not agree on the cost
+    (run / "score-k3.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
+    point = probe.report(inspect(qwen_like), flow(tmp_path), run)["points"][0]
+    assert point["band"][0] < 3 < point["band"][1] and point["nll_gate"] == "near the limit"
+
+
+def test_a_probe_with_no_reference_or_with_no_cut(qwen_like, tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "flow.yml").write_text("name: w\ndata: {sources: []}\n")
+    args = ["probe", str(qwen_like), "--workflow", "flow.yml"]
+    assert cli.main([*args, "--report"]) == 2 and "the probe did not run to its reference" in capsys.readouterr().err
+    assert cli.main(args) == 2 and "needs --machine" in capsys.readouterr().err
+    ran(qwen_like, tmp_path, {}).rename(tmp_path / "moved")
+    Path(f"runs/{qwen_like.name}/w").mkdir(parents=True)
+    (tmp_path / "moved").rename(f"runs/{qwen_like.name}/w/probe")
+    assert cli.main([*args, "--report"]) == 0 and "no cut has a score" in capsys.readouterr().out
+    assert cli.main([*args, "--report", "--json"]) == 0 and json.loads(capsys.readouterr().out)["points"] == []
+
+
+@pytest.mark.skipif(not (RECORD / "qwen-fit-g208-score.jsonl").exists(), reason="the record is not on this machine")
+def test_the_report_of_the_recorded_gate_files_gives_the_numbers_of_the_record(tmp_path):
+    from prune_kit.resolve import ModelNotFound, resolve
+    try:
+        facts = inspect(resolve("unsloth/Qwen3.6-35B-A3B-NVFP4-Fast", []))
+    except ModelNotFound:
+        pytest.skip("the full Qwen is not on this machine")
+    files = {"capture.jsonl": "qwen-capture.jsonl", "rank.json": "qwen-rank.json",
+             "score-full.jsonl": "qwen-fit-g256-score.jsonl",
+             "score-k208.jsonl": "qwen-fit-g208-score.jsonl", "score-k192.jsonl": "qwen-fit-g192-score.jsonl"}
+    for name, source in files.items():
+        (tmp_path / name).symlink_to(RECORD / source)
+    r = probe.report(facts, workflow.load(Path(__file__).parent.parent / "examples/qwen-prune-record.yml"), tmp_path)
+    assert [round(p["nll_change_pct"], 2) for p in r["points"]] == [4.15, 8.04]
+    assert [p["nll_gate"] for p in r["points"]] == ["near the limit", "fail"] and 216 <= r["estimate_k"] <= 228

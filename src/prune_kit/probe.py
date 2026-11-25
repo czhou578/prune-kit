@@ -1,5 +1,8 @@
 """The probe, level 1 (plans/PLAN_PRUNE_KIT.md §5.5): two or three measured points in one window.
 
+``report`` reads the files of a probe that ran: the cost of each cut, a band for that cost, and an estimate of the
+deepest cut that holds the ``nll`` gate.
+
 ``plan`` writes the window file of a probe. ``prune-kit window`` runs that file, and it is the only command that
 stops a worker. The window has one point for the full model and one point for each cut:
 
@@ -8,15 +11,19 @@ stops a worker. The window has one point for the full model and one point for ea
 2. Each cut boots, and one client scores the same turns.
 """
 
+import json
+import random
 import shlex
 import sys
 from pathlib import Path
 
 import yaml
 
+from . import rank, replay
 from .facts import Facts
 from .preflight import default_ks
 from .resolve import slug
+from .sessions import load
 
 GIB = 1 << 30
 PROFILES = Path(__file__).parent / "profiles"
@@ -90,3 +97,76 @@ def write(facts: Facts, workflow, window: dict) -> Path:
     path.write_text("# The window file of a probe, from `prune-kit probe`. Run it with `prune-kit window`.\n"
                     + yaml.safe_dump(window, sort_keys=False, width=10_000))
     return path
+
+
+def band(ref_rows, new_rows, draws: int = 1000) -> tuple[float, float]:
+    """The 5% and the 95% point of the NLL change in percent, over new samples of the common turns. 20 turns give
+    much noise: the band shows how far the cost of a cut can be from its measured value."""
+    ref, new = ({replay.key(r): r for r in rows if "error" not in r and r["tokens"]} for rows in (ref_rows, new_rows))
+    pairs = [(ref[k], new[k]) for k in sorted(ref.keys() & new.keys())]
+    rng, changes = random.Random(0), []
+    per_token = lambda rows: sum(r["nll"] for r in rows) / sum(r["tokens"] for r in rows)
+    for _ in range(draws):
+        sample = [pairs[rng.randrange(len(pairs))] for _ in pairs]
+        changes.append(100 * (per_token([b for _, b in sample]) / per_token([a for a, _ in sample]) - 1))
+    changes.sort()
+    return changes[draws // 20], changes[-(draws // 20) - 1]
+
+
+def report(facts: Facts, workflow, run: Path | None = None) -> dict:
+    """The result of a probe as plain data. ``text`` prints it."""
+    run = Path(run or folder(facts, workflow))
+    try:
+        captured, ref = load(run / "capture.jsonl"), load(run / "score-full.jsonl")
+        ranked = json.loads((run / "rank.json").read_text())
+    except OSError as e:
+        raise ProbeError(f"the probe did not run to its reference: {e.filename} does not exist") from e
+    limit = workflow.gates["nll"]["limit_pct"]
+    ks = sorted((int(p.stem[7:]) for p in run.glob("score-k*.jsonl")), reverse=True)
+    shares, points = rank.overlap(captured, ks) if ranked["segments"] > 1 else {}, []
+    for k in ks:
+        new = load(run / f"score-k{k}.jsonl")
+        result, (low, high) = replay.compare(ref, new, workflow.gates), band(ref, new)
+        state = "pass" if high <= limit else "fail" if low > limit else "near the limit"
+        points.append({"k": k, "freed_bytes": facts.freed(k), "removed_pct": 100 * rank.removed(ranked, k),
+                       "overlap": shares.get(k), "turns": result["new"]["turns"], "band": [low, high],
+                       "nll_change_pct": result["nll_change_pct"], "nll_gate": state,
+                       "tools_gates": all(list(result["gates"].values())[1:])})
+    # The line goes through the full model (no cut, no cost) and fits the measured points.
+    square = sum(p["removed_pct"] ** 2 for p in points)
+    slope = sum(p["removed_pct"] * p["nll_change_pct"] for p in points) / square if square else None
+    estimate = None
+    if slope and slope > 0:
+        estimate = next((k for k in range(facts.per_token or 1, facts.max_experts)
+                         if 100 * rank.removed(ranked, k) * slope <= limit), None)
+    memory = json.loads(w.read_text())["points"] if (w := run / "window.json").exists() else []
+    peak = next((m["available_before_gib"] - m["available_lowest_gib"] for m in memory if m["name"] == "full"), None)
+    return {"folder": str(run), "segments": ranked["segments"], "prompt_tokens": ranked["prompt_tokens"],
+            "limit_pct": limit, "points": points, "slope": slope, "estimate_k": estimate,
+            "estimate_freed_bytes": facts.freed(estimate) if estimate else None, "full_peak_gib": peak,
+            "weights_gib": facts.total_bytes / GIB}
+
+
+def text(r: dict) -> str:
+    lines = [f"probe     {r['folder']}",
+             f"sample    {r['segments']} segments, {r['prompt_tokens']:,} prompt tokens", "",
+             f"{'point':<8}{'freed':>10}{'routing removed':>18}{'overlap':>9}{'NLL change':>12}{'band (90%)':>20}  "
+             f"gate nll (+{r['limit_pct']:g}%)"]
+    for p in r["points"]:
+        both = f"{p['overlap']:.0%}" if p["overlap"] is not None else "-"
+        lines.append(f"K {p['k']:<6}{p['freed_bytes'] / GIB:>6.2f} GiB{p['removed_pct']:>17.2f}%{both:>9}"
+                     f"{p['nll_change_pct']:>+11.2f}%{p['band'][0]:>+10.2f}% to {p['band'][1]:+.2f}%  {p['nll_gate']}"
+                     + ("" if p["tools_gates"] else "; a tools gate fails"))
+    if not r["points"]:
+        lines.append("no cut has a score: the window ended before the first cut")
+    elif r["estimate_k"]:
+        lines += ["", f"estimate  the nll gate holds down to about K {r['estimate_k']} "
+                      f"({r['estimate_freed_bytes'] / GIB:.2f} GiB freed)",
+                  f"          a line through the points: +{r['slope']:.2f}% NLL for each 1% of removed routing",
+                  "          the estimate is not a gate result: a cut near the limit needs the full gate with 60 turns"]
+    else:
+        lines += ["", "estimate  none: the cuts show no cost that grows with the removed routing"]
+    if r["full_peak_gib"] is not None:
+        lines.append(f"memory    the full model used {r['full_peak_gib']:.1f} GiB at the peak of the window "
+                     f"({r['weights_gib']:.2f} GiB of weights in the folder)")
+    return "\n".join(lines)

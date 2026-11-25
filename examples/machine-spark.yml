@@ -1,6 +1,6 @@
 # The machine file of the DGX Spark of this project, for `prune-kit window --machine`.
 # CAUTION: A wrong stop or start command leaves a live worker down. Check each command against the machine before
-# the first real window, and run the window with --dry-run first.
+# a real window, and run the window with --dry-run first.
 path: [/home/colin-spark/venvs/vllm033/bin]   # the folder of the server tools: a probe puts it first in PATH
 workers:
   deepseek:   # DeepSeek V4 Flash, port 8888, about 85 GiB
@@ -8,11 +8,13 @@ workers:
     start: docker start deepseek-v4-flash-code226t5-deepseek-v4-flash-1
     health: http://127.0.0.1:8888/health
     metrics: http://127.0.0.1:8888/metrics
-    # The stock bot needs this worker from 05:00 on weekdays. The end of the span is an assumption: set the real hour.
-    up: [{days: [mon, tue, wed, thu, fri], from: "05:00", to: "16:00"}]
+    # The stock bot has scheduled jobs on weekdays from 05:00 to 10:00 (~/.hermes/cron/jobs.json, 2026-11-25).
+    up: [{days: [mon, tue, wed, thu, fri], from: "05:00", to: "10:00"}]
   qwen:       # Qwen3.6-35B-A3B at K 208, port 8889, about 21.5 GiB: a plain vLLM process with its own session
-    stop: kill -TERM -- -"$(cat ~/Projects/dsv4-specialize/results/pair-qwen.pid)"; sleep 20
-    start: python3 ~/Projects/night-train/spikes/qwen_lora_test.py --restore-only
+    # The stop waits up to 90 s for the process. The start uses the command and the environment that night-train saved
+    # (~/.local/share/night-train/spike2/live-qwen.json): they were equal to the live process on 2026-11-25.
+    stop: p=$(cat ~/Projects/dsv4-specialize/results/pair-qwen.pid); kill -TERM -- -$p; for i in $(seq 90); do [ -d /proc/$p ] || break; sleep 1; done; sleep 5
+    start: python3 -I ~/Projects/night-train/spikes/qwen_lora_test.py --restore-only
     health: http://127.0.0.1:8889/health
     metrics: http://127.0.0.1:8889/metrics
 memory: {min_available_gib: 2, min_free_swap_gib: 1}   # below a limit, the watch stops the client
