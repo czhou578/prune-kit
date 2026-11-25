@@ -104,11 +104,11 @@ def test_the_preflight_reports_the_data_of_the_workflow(qwen_like, tmp_path):
                     " min_held_out_turns: 2}\n")
     w = workflow.load(flow)
     r = preflight.report(inspect(qwen_like), workflow=w)
-    assert r["verdict"] == "GO WITH WORK: prune tool, data" and "sessions.jsonl does not exist" in preflight.text(r)
+    assert r["verdict"] == "GO WITH WORK: data" and "sessions.jsonl does not exist" in preflight.text(r)
     sessions.save(w.folder, [make("c", chars=8000), make("h", held=True)])
     r = preflight.report(inspect(qwen_like), workflow=w)
     out = preflight.text(r)
-    assert r["verdict"] == "GO WITH WORK: prune tool" and r["data"]["ok"]
+    assert r["verdict"] == "GO" and r["data"]["ok"]
     assert "2,000 calibration tokens (minimum 1,500), 2 held-out turns (minimum 2)" in out
     assert "claude_code     calibration" in out
 
