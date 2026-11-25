@@ -31,8 +31,9 @@ class CaptureError(Exception):
     pass
 
 
-def post(base: str, path: str, body: dict, timeout: int = 3600) -> dict:
-    request = urllib.request.Request(base + path, json.dumps(body).encode(), {"Content-Type": "application/json"})
+def post(base: str, path: str, body: dict | None, timeout: int = 3600) -> dict:
+    data = None if body is None else json.dumps(body).encode()   # no body: a GET request
+    request = urllib.request.Request(base + path, data, {"Content-Type": "application/json"})
     with urllib.request.urlopen(request, timeout=timeout) as reply:
         return json.load(reply)
 
@@ -92,9 +93,9 @@ def common_prefix(a, b) -> int:
     return next((n for n, (x, y) in enumerate(zip(a, b)) if x != y), min(len(a), len(b)))
 
 
-def capture_one(base, model, s, g, i, tools, seen, experts, extra=None, generate=0, post=post) -> dict:
+def capture_one(base, model, s, g, i, tools, seen, experts, extra=None, generate=0, post=None) -> dict:
     """The row of one segment. ``seen`` holds the keys of the prefixes that an earlier row counted."""
-    extra, seg = extra or {}, s["segments"][g]
+    extra, seg, post = extra or {}, s["segments"][g], post or globals()["post"]
     body = chat_body(model, s, seg, i, tools, extra)
     values, shape, prompt = routed(post(base, "/v1/chat/completions", body))
     values = values[:len(prompt) * shape[1] * shape[2]]   # without the row of the one new token
@@ -132,7 +133,7 @@ def targets(sessions, split: str = "calibration"):
                 yield s, g, last
 
 
-def run(base, model, sessions, tools, out, experts, limit=None, extra=None, generate=0, post=post, log=print) -> int:
+def run(base, model, sessions, tools, out, experts, limit=None, extra=None, generate=0, post=None, log=print) -> int:
     """Capture each calibration segment that ``out`` does not hold yet. A failed segment gets a row with the
     error, and the run goes on. Return the number of failed segments."""
     out = Path(out)

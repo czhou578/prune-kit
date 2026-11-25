@@ -22,6 +22,7 @@ stages, is in work. Stage III is not started.
 | `prune-kit preflight MODEL`: the quick check, from the model files only | Built for safetensors checkpoints, EXL3 included |
 | The workflow file, and `prune-kit preflight MODEL --workflow FILE` | Built |
 | `prune-kit data FILE`: the sessions of a workflow, the held-out split, the secret pass | Built |
+| `prune-kit capture MODEL` and `prune-kit rank CAPTURE`: the routed experts of the workflow, and their order | Built. The capture needs a server with its capture flag |
 | `prune-kit build MODEL`: the pruned folder, and its check against the source | Built for safetensors checkpoints. Not for EXL3 |
 | The other stages | Not built. Do them by hand with the blueprint |
 
@@ -110,6 +111,32 @@ minimum, the verdict lists `data` as work.
 - CAUTION: `sessions.jsonl` can hold private text of your transcripts. Keep it out of git: `runs/` is in
   `.gitignore`. The secret pass replaces only the strings that look like keys.
 - A token count of the data is an estimate: the characters divided by 4.
+
+### The capture and the rank
+
+- CAUTION: The capture needs the full model on a test server with the capture of the routed experts. On vLLM 0.33
+  that is the flag `--enable-return-routed-experts`. A live worker does not have this flag. Do not stop a live
+  worker for a capture without a plan for the window.
+
+```bash
+uv run prune-kit capture unsloth/Qwen3.6-35B-A3B-NVFP4-Fast --workflow examples/coding-fast-route.yml --base-url http://127.0.0.1:8890
+```
+
+The capture sends each calibration segment of the workflow once. It writes one row of counts for each segment to
+`runs/<model>/<workflow>/capture.jsonl`. A second start continues after the last good row.
+
+- The shared prefix (the system prompt and the tools) counts once. A token that the server did not fill does not count.
+- `--generate N` also counts the routing of N tokens that the model writes after each segment.
+- `--body JSON` adds keys to each request, for example `{"reasoning_effort": "medium"}`.
+
+```bash
+uv run prune-kit rank runs/unsloth--Qwen3.6-35B-A3B-NVFP4-Fast/coding-fast-route/capture.jsonl
+```
+
+The rank orders the experts of each layer by their count, and it writes `rank.json` beside the capture. For each K,
+it prints the share of the routing that the cut removes. It also ranks two halves of the capture apart, and it
+prints the share of the dropped experts that both halves drop. A low overlap shows that the capture is too small.
+The rank of the capture of the Qwen prune is equal to the rank file of the record: a test compares them.
 
 ### The pruned folder
 

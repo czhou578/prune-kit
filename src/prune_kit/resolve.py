@@ -40,3 +40,10 @@ def resolve(model: str, extra_hubs=()) -> Path:
         raise ModelNotFound(f"{model}: no folder with this path, and no model with this name in a local cache")
     names = ", ".join(r.name.removeprefix("models--").replace("--", "/", 1) for r in match)
     raise ModelNotFound(f"{model}: more than one local model matches: {names}")
+
+
+def slug(folder: Path) -> str:
+    """A short name of a model folder for the run folders: ``org--name`` for a snapshot of a cache."""
+    parts = Path(folder).parts
+    repo = next((p for p in reversed(parts) if p.startswith("models--")), None)
+    return repo.removeprefix("models--") if repo and "snapshots" in parts else Path(folder).name
