@@ -25,7 +25,8 @@ stages, is in work. Stage III is not started.
 | `prune-kit capture MODEL` and `prune-kit rank CAPTURE`: the routed experts of the workflow, and their order | Built. The capture needs a server with its capture flag |
 | `prune-kit build MODEL`: the pruned folder, and its check against the source | Built for safetensors checkpoints. Not for EXL3 |
 | `prune-kit gate`: the replay gates `nll` and `tools`: record, score, compare | Built |
-| The other stages | Not built. Do them by hand with the blueprint |
+| `prune-kit window`: test servers in one window, with the restore of the workers | Built, with dry-run tests. No real window ran yet |
+| The probe, the gates `tasks`, `judge`, `speed` and `memory`, the report | Not built: stage III. Do them by hand with the blueprint |
 
 ## Scope
 
@@ -183,6 +184,31 @@ uv run prune-kit gate --compare runs/score-full.jsonl runs/score-k208.jsonl --wo
   Compare totals only, and score the reference in the same window as the points.
 - `scripts/gate_c.sh` scores the recorded turns of the Qwen prune with this scorer and with the scorer of the
   record, on the live Qwen. It stops no server.
+
+### A window
+
+A window is a time in which test servers run in place of a live worker. `prune-kit window` runs the points of a
+window file, one test server after the other, and it restores the machine at the end.
+
+- CAUTION: A real window stops a live worker, and the worker gives no answers until the restore. Run each window
+  with `--dry-run` first. The dry run prints each command, runs no command, and stops no worker.
+- CAUTION: A wrong command in the machine file leaves a worker down. Check
+  [examples/machine-spark.yml](examples/machine-spark.yml) against the machine before the first real window.
+
+```bash
+uv run prune-kit window examples/window-qwen-score.yml --machine examples/machine-spark.yml --stop qwen --start-after "2026-11-28 22:00" --boot-by "2026-11-29 01:00" --restore-at "2026-11-29 03:00" --dry-run
+```
+
+The rules of a window:
+
+- A worker stops only when `--stop` names it, and only when its `/metrics` shows 0 running and 0 waiting requests.
+- The three deadlines have no defaults. No point boots after `--boot-by`. Each client stops at `--restore-at`.
+- The window refuses a stop that touches the `up` hours of a worker in the machine file.
+- A boot that is not healthy in 15 minutes goes down. After two failed boots in a row, no more point boots.
+- A watch reads the available memory and the free swap during each client. Below a limit, it stops the client.
+- The window always ends with the restore of each worker that it stopped. Exit code 3 means that the restore failed.
+
+Start a real window in tmux under `job run`, with a `--desc` and a `--log`, so that it shows on the jobs page.
 
 ## Tests
 

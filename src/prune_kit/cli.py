@@ -1,11 +1,12 @@
-"""Command line: prune-kit stages | preflight | data | capture | rank | build | gate."""
+"""Command line: prune-kit stages | preflight | data | capture | rank | build | gate | window."""
 
 import argparse
 import json
 import sys
+from datetime import datetime
 from pathlib import Path
 
-from . import __version__, capture, preflight, rank, replay, sessions, sources, st_moe, stages, workflow
+from . import __version__, capture, preflight, rank, replay, sessions, sources, st_moe, stages, window, workflow
 from .facts import inspect
 from .resolve import ModelNotFound, resolve, slug
 from .weights import FormatError, WeightsError
@@ -131,6 +132,19 @@ def cmd_gate(a) -> int:
     return 1 if failed else 0
 
 
+def cmd_window(a) -> int:
+    """Exit code 0: each point ran. 1: a point failed or did not run. 2: a fault of a file. 3: the restore failed."""
+    try:
+        machine, points = window.load_machine(a.machine), window.load_window(a.window)
+        times = [datetime.fromisoformat(t) for t in (a.start_after, a.boot_by, a.restore_at)]
+    except (window.WindowError, ValueError) as e:
+        print(f"prune-kit: {e}", file=sys.stderr)
+        return 2
+    log = lambda line: print(f"{datetime.now():%F %T} {line}", flush=True)
+    system = window.DryRun(log, machine, datetime.now()) if a.dry_run else None
+    return window.Window(machine, a.stop, *times, system, log).run(points)
+
+
 def parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="prune-kit", description="Prune a local model for one workflow.")
     p.add_argument("--version", action="version", version=f"prune-kit {__version__}")
@@ -189,6 +203,16 @@ def parser() -> argparse.ArgumentParser:
     g.add_argument("--n", type=int, metavar="N", help="--record: the number of turns (default: gates.nll.turns)")
     g.add_argument("--from-data", action="store_true", help="--record: the own turns of the data, with no server")
     g.set_defaults(run=cmd_gate)
+    w = sub.add_parser("window", help="run the points of a window file on test servers, then restore the workers")
+    w.add_argument("window", metavar="FILE", help="the window file: the points with their servers and clients")
+    w.add_argument("--machine", required=True, metavar="FILE", help="the machine file: the workers and the limits")
+    w.add_argument("--stop", action="append", default=[], metavar="WORKER",
+                   help="a live worker that the window stops and restores; no worker stops without this option")
+    for name, text in (("start-after", "the window waits until this time"), ("boot-by", "no point boots after it"),
+                       ("restore-at", "each client stops, and the restore starts")):
+        w.add_argument(f"--{name}", required=True, metavar="TIME", help=f'{text}, as "2026-11-28 22:30"')
+    w.add_argument("--dry-run", action="store_true", help="print each command; run no command and stop no worker")
+    w.set_defaults(run=cmd_window)
     return p
 
 

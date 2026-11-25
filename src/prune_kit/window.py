@@ -106,6 +106,34 @@ class System:
         return kb["MemAvailable"] / 2**20, kb["SwapFree"] / 2**20
 
 
+class DryRun(System):
+    """No command runs and no time passes: each command is a log line, each boot is healthy, and each client ends
+    at once. A stop command of the machine file puts its worker down until its start command."""
+
+    def __init__(self, log, machine: dict, start: datetime):
+        self.log, self.clock, self.off = log, start, set()
+        self.effects = {w[k]: (k, w["health"]) for w in machine["workers"].values() for k in ("stop", "start")}
+
+    now = lambda self: self.clock
+    done = lambda self, process: 0
+    kill = lambda self, process: None
+    memory = lambda self: (999.0, 999.0)
+    get = lambda self, url: None if url in self.off else ""
+
+    def sleep(self, seconds):
+        self.clock += timedelta(seconds=seconds)
+
+    def run(self, command):
+        self.log(f"dry run: {command}")
+        kind, health = self.effects.get(command, (None, None))
+        self.off = self.off | {health} if kind == "stop" else self.off - {health}
+        return 0
+
+    def spawn(self, command):
+        self.log(f"dry run: {command}")
+        return command
+
+
 class Window:
     def __init__(self, machine: dict, stop, start_after: datetime, boot_by: datetime, restore_at: datetime,
                  system: System | None = None, log=print):
@@ -212,7 +240,7 @@ class Window:
         code, fails = 0, 0
         try:
             self.check()
-            self.wait(lambda: self.sys.now() >= self.start_after)
+            self.sys.sleep(max(0.0, (self.start_after - self.sys.now()).total_seconds()))
             self.stop_workers()
             for point in points:
                 if self.sys.now() >= self.boot_by or fails >= 2:
