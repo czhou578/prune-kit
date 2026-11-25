@@ -18,7 +18,7 @@ Stage I of [the plan](plans/PLAN_PRUNE_KIT.md) is in work: the blueprint and the
 |---|---|
 | [BLUEPRINT.md](BLUEPRINT.md): the stages, the gates and the rules of a prune | Written |
 | `prune-kit stages`: the stages, and the command of each stage | Built |
-| `prune-kit preflight MODEL`: the quick check | Not built |
+| `prune-kit preflight MODEL`: the quick check, from the model files only | Built for safetensors checkpoints |
 | The other stages | Not built. Do them by hand with the blueprint |
 
 ## Scope
@@ -39,10 +39,31 @@ uv sync
 uv run prune-kit stages
 ```
 
+```bash
+uv run prune-kit preflight thinkingmachines/Inkling-2-Mini
+```
+
+`MODEL` is a folder, a Hugging Face name in a local cache, or a part of such a name. The preflight reads
+`config.json` and the headers of the weight files. It loads no weights, so it runs in less than a second beside
+the live model servers. It prints three parts:
+
+- **The model:** the layers, the routed experts per layer and per token, and the size of one expert.
+- **The cuts:** the memory that each K frees. `--k 208 192` sets the cuts.
+- **Can the pipeline run?** One line for each part that a prune needs. `yes` is ready, `no` and `unknown` need
+  work, and `info` is a fact that blocks nothing.
+
+The verdict is `GO`, `GO WITH WORK` with the parts that need work, or `NO-GO` for a model with no routed experts.
+The exit code is 0, 0 and 1. `--json` prints the same report as JSON.
+
+The preflight gives no estimate of how deep a cut can go. Only a measurement gives that depth: see §5.5 of the
+plan.
+
 ## Tests
 
 ```bash
 uv run pytest -q
 ```
 
-The tests use small synthetic files in temporary folders. They load no model.
+The tests use small synthetic files in temporary folders. They load no model. `tests/test_gate_a.py` reads the
+headers of the real checkpoints of this machine and compares the preflight with the recorded numbers of the two
+prunes. Each of its tests is skipped where its checkpoint does not exist.
