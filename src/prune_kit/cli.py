@@ -167,18 +167,29 @@ def cmd_probe(a) -> int:
         flow, facts = workflow.load(a.workflow), inspect(resolve(a.model, a.hub))
         if a.report:
             r = probe.report(facts, flow, a.folder, a.rank)
-            print(json.dumps(r, indent=2) if a.json else probe.text(r))
+            gate = probe.folder(facts, flow, "full")   # the full gate of --full, if it ran
+            g = probe.report(facts, flow, gate) if not a.folder and (gate / "score-full.jsonl").exists() else None
+            if a.json:
+                print(json.dumps({"probe": r, "full": g} if g else r, indent=2))
+            else:
+                print(probe.text(r) + (f"\n\n{probe.text(g)}\n\n{probe.agree(r, g)}" if g else ""))
             return 0
         if not a.machine:
             raise probe.ProbeError("the window file of a probe needs --machine")
-        plan = probe.plan(facts, flow, probe.load_profile(facts.model_type), window.load_machine(a.machine),
-                          a.port, a.tokens, a.turns, a.rank, a.gates, a.flags, dict(e.split("=", 1) for e in a.env))
-        path = probe.write(facts, flow, plan)
+        if a.full and a.rank:
+            raise probe.ProbeError("--full captures the whole calibration split: it takes no --rank")
+        common = (facts, flow, probe.load_profile(facts.model_type), window.load_machine(a.machine), a.port)
+        more = (a.flags, dict(e.split("=", 1) for e in a.env))
+        plan = probe.plan(*common, a.tokens, a.turns, a.rank, () if a.full else a.gates, *more)
+        if a.full:   # the points of the full gate follow the points of the probe, with no restore between them
+            gate = probe.plan(*common, None, flow.gates["nll"]["turns"], None, a.gates, *more, name="full")
+            plan = {"release": sorted({*plan["release"], *gate["release"]}), "points": plan["points"] + gate["points"]}
+        path = probe.write(facts, flow, plan, ("probe", "full") if a.full else ("probe",))
     except (ModelNotFound, WeightsError, workflow.WorkflowError, window.WindowError, probe.ProbeError, OSError) as e:
         print(f"prune-kit: {e}", file=sys.stderr)
         return 2
     names = ", ".join(f"{p['name']} ({p['need_gib']:g} GiB)" for p in plan["points"])
-    run = f"prune-kit window {path} --machine {a.machine} --results {path.with_name('window.json')}"
+    run = f"prune-kit window {path} --machine {a.machine}"
     print(f"window    {path}\npoints    {names}\n\nThe probe stops no worker. A window does: name each worker "
           f"with --stop, and set the three deadlines.\nFirst the dry run, then the same command with no --dry-run:"
           f"\n  {run} --stop WORKER --start-after TIME --boot-by TIME --restore-at TIME --dry-run")
@@ -282,6 +293,8 @@ def parser() -> argparse.ArgumentParser:
                    help="each point also runs these: the tool-call suite, the decode speed, the turns for the judge")
     o.add_argument("--flags", default="", metavar="TEXT", help="more flags for each test server, as one text")
     o.add_argument("--env", action="append", default=[], metavar="NAME=VALUE", help="one more variable for each server")
+    o.add_argument("--full", action="store_true",
+                   help="also the full gate, in the same window: the whole capture, the turns of gates.nll")
     o.add_argument("--report", action="store_true", help="print the result of the probe that ran; write no file")
     o.add_argument("--json", action="store_true", help="--report: print the result as JSON")
     o.add_argument("--folder", metavar="DIR", help="--report: the folder of the probe, if it moved")

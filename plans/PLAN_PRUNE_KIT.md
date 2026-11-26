@@ -448,7 +448,7 @@ split). Four windows stopped Qwen and DeepSeek, because Inkling needs 45 GiB wit
 
 The runner restored both workers at the first try after each window. Window 4 is the files of two standard runs
 (`prune-kit probe`, and `prune-kit probe --tokens 100000000 --turns 60`), joined into one window file. The files are
-in `runs/thinkingmachines--Inkling-2-Mini/coding-record` (`probe-sample` and `probe`).
+in `runs/thinkingmachines--Inkling-2-Mini/coding-record` (`probe` and `full`).
 
 | Cut | Freed | Probe: 450,383 tokens, 20 turns | Band (90%) of the probe | Full gate: 3,974,504 tokens, 60 turns | Gates of the full gate |
 |---|---|---|---|---|---|
@@ -480,6 +480,14 @@ in `runs/thinkingmachines--Inkling-2-Mini/coding-record` (`probe-sample` and `pr
   keeps a draft file out of the weight index, as the source does, and it copies each sub-folder of the source (the
   tokenizer of Inkling). The preflight now gives GO for the model type `inkling2_loop`.
 
+**The hardening after stage III (2026-11-25).** The real windows showed five weak points. Two pull requests
+repair them, with no window.
+
+| PR | Content | State |
+|---|---|---|
+| H1 | The window runner: a stop of the runner (Ctrl-C, `kill`, the end of its terminal) stops the client and the test server and restores the workers. A point can name its results file. The machine file has the night-train hours of DeepSeek (00:30 each night) | Built. A real stop of a runner with stand-in servers restored its worker |
+| H2 | `prune-kit probe --full`: the probe and the full gate in one window, and a report that compares them. The gate `speed` has eight prompts and shows the change for the same prompts. A profile sets the limit of a recorded turn (Inkling: 1,600 tokens), and the report counts the turns that stopped at the limit | Built. The report gives the numbers of gate D from the files of the Inkling window. No window ran with these changes |
+
 ## 7. The gates of the project
 
 | Gate | Test | Needs |
@@ -505,7 +513,10 @@ server, and layers that run three times.
 5. **A window stops a live worker.** The runner needs your `--stop`, has deadlines with no defaults, and restores
    on each failure. The stock bot needs DeepSeek from 05:00 on weekdays.
 6. **The data holds secrets.** It stays local and out of git.
-7. **A general tool costs more than one prune by hand.** The stop point after stage I limits that cost.
+7. **The machine has little free memory beside both workers.** About 8 GiB is available, and the watch job of the
+   pair stops Qwen below 2 GiB (2026-11-25 at 20:38, after two VS Code server processes started). Do not run a
+   step that needs some GiB of memory beside both workers.
+8. **A general tool costs more than one prune by hand.** The stop point after stage I limits that cost.
 
 ## 9. Open points to check during the work
 

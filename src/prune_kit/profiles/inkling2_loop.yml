@@ -30,3 +30,4 @@ replay:
   start_think: 200008    # <|content_thinking|>
   decision_tokens: 2
   sampling: {temperature: 1.0}   # generation_config.json of the checkpoint
+  max_tokens: 1600               # the limit of a recorded turn: with 800 tokens, 13 of 60 turns stopped in the reasoning

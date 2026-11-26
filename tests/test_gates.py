@@ -15,17 +15,20 @@ def events(tokens, pieces):
     return [*out, {"choices": [], "usage": {"completion_tokens": tokens}}]
 
 
-def test_the_speed_is_the_median_of_three_prompts(tmp_path):
+def test_the_speed_is_the_median_of_the_prompts(tmp_path):
     ticks, bodies = iter(range(100)), []
 
     def stream(base, body):
         bodies.append(body)
-        return events({0: 41, 1: 21, 2: 0}[len(bodies) - 1], 5)    # the third prompt gives no tokens
+        return events({0: 41, 1: 21}.get(len(bodies) - 1, 0), 5)    # each later prompt gives no tokens
 
     r = gates.measure_speed("http://x", "m", tmp_path / "speed.json", stream=stream, clock=lambda: next(ticks))
     assert [run["speed"] for run in r["runs"]] == [10.0, 5.0] and r["tokens_per_second"] == 7.5   # 4 s for each prompt
     assert json.loads((tmp_path / "speed.json").read_text())["tokens_per_second"] == 7.5
-    assert bodies[0]["stream"] and bodies[0]["stream_options"] == {"include_usage": True} and len(bodies) == 3
+    assert bodies[0]["stream"] and bodies[0]["stream_options"] == {"include_usage": True} and len(bodies) == 8
+    assert [run["prompt"] for run in r["runs"]] == [0, 1]
+    slow = {"runs": [{"prompt": 0, "speed": 9.0}, {"prompt": 1, "speed": 5.5}, {"prompt": 5, "speed": 1.0}]}
+    assert gates.speed_change(r, slow) == 0.0 and gates.speed_change(None, slow) is None   # -10% and +10%
 
 
 def test_the_tasks_gate_and_the_memory_gate():
@@ -54,7 +57,8 @@ def test_the_report_shows_each_gate_that_has_a_file(qwen_like, tmp_path):
     suite = lambda n: {"total_tasks": 85, "total_correct": n}
     memory = {"name": "k3", "booted": True, "available_before_gib": 30, "available_lowest_gib": 8}
     files = {"tools-full.json": suite(50), "tools-k3.json": suite(49), "window.json": {"points": [memory]},
-             "speed-full.json": {"tokens_per_second": 30.0}, "speed-k3.json": {"tokens_per_second": 31.5},
+             "speed-full.json": {"tokens_per_second": 30.0, "runs": [{"prompt": 0, "speed": 30.0}]},
+             "speed-k3.json": {"tokens_per_second": 31.5, "runs": [{"prompt": 0, "speed": 27.0}]},
              "judge-k3.json": {"ok": True, "summary": "12 better, 11 worse, 7 equal"}}
     for name, content in files.items():
         (run / name).write_text(json.dumps(content))
@@ -62,7 +66,8 @@ def test_the_report_shows_each_gate_that_has_a_file(qwen_like, tmp_path):
     assert point["verdict"] == "your decision" and point["tasks"]["ok"] and point["memory"]["peak_gib"] == 22
     out = probe.text(probe.report(inspect(qwen_like), flow(tmp_path), run))
     assert ("K 3     verdict: your decision; tasks 49 of 85 (the full model: 50); peak 22.0 GiB; "
-            "speed 31.5 tok/s (the full model: 30.0); judge no loss (12 better, 11 worse, 7 equal)") in out
+            "speed 31.5 tok/s (the full model: 30.0, -10% for the same prompts); "
+            "judge no loss (12 better, 11 worse, 7 equal)") in out
     (run / "tools-k3.json").write_text(json.dumps({"total_tasks": 85, "total_correct": 40}))
     assert probe.report(inspect(qwen_like), flow(tmp_path), run)["points"][0]["verdict"] == "fail"
 

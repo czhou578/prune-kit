@@ -251,8 +251,9 @@ uv run prune-kit probe unsloth/Qwen3.6-35B-A3B-NVFP4-Fast --workflow examples/co
   paths, and the container gets the folder of the model and the run folder at the same paths. `down` of a profile
   is the command that removes the server after its stop.
 - `replay` of a profile holds the settings of the replay gate for the model type: the tokens that start and end
-  the reasoning, the number of tokens of the decision, and the sampling. The gate commands of the window then have
-  `--profile TYPE`.
+  the reasoning, the number of tokens of the decision, the sampling, and the limit of a recorded turn
+  (`max_tokens`, 800 with no setting). The gate commands of the window then have `--profile TYPE`. The report
+  counts the recorded turns that stopped at the limit: such a turn has no decision to score.
 - The command prints the `prune-kit window` command for the file. Run the dry run first.
 
 After the window, `--report` prints the result. It needs no machine file. `--folder DIR` reads a probe folder
@@ -270,13 +271,21 @@ uv run prune-kit probe unsloth/Qwen3.6-35B-A3B-NVFP4-Fast --workflow examples/co
   is not a gate result.
 - **The memory:** the peak of the full model in the window, from the results file of the window.
 
-**The full gate uses the same two commands.** `--rank FILE` gives the rank of a full capture: the window then has
-no sample capture. `--turns 60` sets the turns of the full `nll` gate. `--gates tasks speed` adds two clients to
+**The full gate is one more option.** `--full` puts the points of the full gate behind the points of the probe, in
+the same window and with no restore between them. The full model boots again, captures the whole calibration split,
+and records the turns of `gates.nll` (60). Then the same cuts boot with the rank of that capture. The files of the
+full gate go to the folder `full` beside the folder `probe`, and `--report` then prints both results and compares
+them: the full gate against the band of the probe, for each cut. With `--full`, `--gates` adds its clients to the
+points of the full gate only.
+
+**The full gate can also use a rank that exists.** `--rank FILE` gives the rank of a full capture: the window then
+has no sample capture. `--turns 60` sets the turns of the full `nll` gate. `--gates tasks speed` adds two clients to
 each point:
 
 - `tasks`: the tool-call suite of `model-benchmarks` (85 tasks). The machine file names its folder under
   `tools.model_benchmarks`. A point passes with at most 3 tasks fewer than the full model.
-- `speed`: `prune-kit gate --speed` measures the decode speed on three fixed prompts. The test server of the Qwen
+- `speed`: `prune-kit gate --speed` measures the decode speed on eight fixed prompts. One prompt differs from the
+  next by 10% and more, so the report also shows the median change for the same prompts. The test server of the Qwen
   profile has no draft model, so this speed is the speed with no draft. `--flags TEXT` and `--env NAME=VALUE` give
   each test server more flags and variables, for example those of its draft model. The profile shows the values.
   A draft model also uses memory: the gate `memory` then measures the test server with its draft.

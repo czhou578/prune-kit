@@ -2,8 +2,9 @@
 
 - ``tasks``: the tool-call suite of ``model-benchmarks`` (85 tasks) writes one JSON file for each test server. The
   gate compares the passed tasks of a point with those of the full model.
-- ``speed``: ``measure_speed`` asks a server for three fixed answers and measures the decode speed. The report shows
-  the speed, and it has no limit.
+- ``speed``: ``measure_speed`` asks a server for eight fixed answers and measures the decode speed. The report shows
+  the speed and its change against the full model for the same prompts, and it has no limit. One prompt differs from
+  the next by 10% and more, so the change is the median of the changes of the prompts.
 - ``memory``: the results file of the window holds the available memory before the boot of a point and the lowest
   value while its clients ran. The difference is the peak of the point.
 
@@ -18,7 +19,12 @@ from statistics import median
 
 PROMPTS = ("Write a Python function that merges two sorted lists into one sorted list. Then explain each step.",
            "Explain how a hash map handles a collision. Give one short example in C.",
-           "Write a SQL query that returns the three customers with the highest total order value, and explain it.")
+           "Write a SQL query that returns the three customers with the highest total order value, and explain it.",
+           "Write a shell script that finds the ten largest files below a folder. Then explain each command.",
+           "Explain the difference between a process and a thread. Give one example of a race condition.",
+           "Write a JavaScript function that removes the duplicates of an array and keeps the order. Explain it.",
+           "Explain what a database index is, and when an index makes a query slower.",
+           "Write a Python class for a queue with a maximum size, with tests for the empty and the full queue.")
 
 
 def stream(base: str, body: dict):
@@ -33,9 +39,9 @@ def stream(base: str, body: dict):
 
 def measure_speed(base: str, model: str, out, max_tokens: int = 400, stream=stream, clock=time.monotonic) -> dict:
     """Write the decode speed of the server to ``out``: the tokens after the first one, divided by the time between
-    the first and the last token. The result is the median of three prompts."""
+    the first and the last token. The result is the median of the prompts."""
     runs = []
-    for prompt in PROMPTS:
+    for n, prompt in enumerate(PROMPTS):
         first = last = tokens = None
         body = {"model": model, "messages": [{"role": "user", "content": prompt}], "max_tokens": max_tokens,
                 "temperature": 0, "stream": True, "stream_options": {"include_usage": True}}
@@ -46,10 +52,18 @@ def measure_speed(base: str, model: str, out, max_tokens: int = 400, stream=stre
                 first = first if first is not None else last
             tokens = (event.get("usage") or {}).get("completion_tokens") or tokens
         if tokens and tokens > 1 and last > first:
-            runs.append({"tokens": tokens, "seconds": round(last - first, 3), "speed": (tokens - 1) / (last - first)})
+            runs.append({"prompt": n, "tokens": tokens, "seconds": round(last - first, 3),
+                         "speed": (tokens - 1) / (last - first)})
     result = {"runs": runs, "tokens_per_second": round(median(r["speed"] for r in runs), 2) if runs else None}
     Path(out).write_text(json.dumps(result, indent=1))
     return result
+
+
+def speed_change(ref: dict | None, new: dict) -> float | None:
+    """The median change of the speed in percent, over the prompts that both servers answered."""
+    a, b = ({r["prompt"]: r["speed"] for r in (d or {}).get("runs", []) if "prompt" in r} for d in (ref, new))
+    common = sorted(a.keys() & b.keys())
+    return round(median(100 * (b[n] / a[n] - 1) for n in common), 1) if common else None
 
 
 def read(path) -> dict | None:
@@ -82,7 +96,8 @@ def point(run, name: str, workflow) -> dict:
     return {"tasks": suite,
             "memory": memory(read(run / "window.json"), name, workflow.memory["peak_gib"]),
             "speed": speed and {"tokens_per_second": speed["tokens_per_second"],
-                                "reference": base and base["tokens_per_second"]},
+                                "reference": base and base["tokens_per_second"],
+                                "change_pct": speed_change(base, speed)},
             "judge": read(run / f"judge-{name}.json")}
 
 

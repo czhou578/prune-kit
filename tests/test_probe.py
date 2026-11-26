@@ -94,7 +94,42 @@ def test_the_probe_command_writes_a_window_file_that_the_dry_run_accepts(qwen_li
                      "--results", "r.json", *times]) == 0
     assert "prune_kit.cli build" in capsys.readouterr().out and not Path("r.json").exists()
     (path.parent / "capture.jsonl").write_text("")
-    assert cli.main(args) == 2 and "holds the files of an earlier probe (capture.jsonl)" in capsys.readouterr().err
+    assert cli.main(args) == 2 and "holds the files of an earlier run (capture.jsonl)" in capsys.readouterr().err
+
+
+def test_the_full_option_puts_the_full_gate_behind_the_probe_in_one_window(qwen_like, tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "flow.yml").write_text("name: w\ndata: {sources: []}\ngates: {nll: {turns: 45}}\npoints: [3]\n")
+    machine = Path(__file__).parent.parent / "examples/machine-spark.yml"
+    args = ["probe", str(qwen_like), "--workflow", "flow.yml", "--machine", str(machine), "--full"]
+    assert cli.main([*args, "--gates", "speed"]) == 0
+    run = Path(f"runs/{qwen_like.name}/w")
+    points = window.load_window(run / "probe/window.yml")
+    assert [(p["name"], p["results"]) for p in points] == [
+        ("full", f"{run}/probe/window.json"), ("k3", f"{run}/probe/window.json"),
+        ("full", f"{run}/full/window.json"), ("k3", f"{run}/full/window.json")]
+    first, gate = points[0]["clients"], points[2]["clients"]
+    assert "--tokens 400000 " in first[0] and "--n 20 " in first[1] and not any("--speed" in c for c in first)
+    assert "--tokens" not in gate[0] and f"--out {run}/full/capture.jsonl" in gate[0] and "--n 45 " in gate[1]
+    assert "--speed" in gate[-1] and f"serve {run}/full/k3 " in points[3]["boot"] and (run / "full").is_dir()
+    assert "--results" not in capsys.readouterr().out
+    assert cli.main([*args, "--rank", "r.json"]) == 2 and "it takes no --rank" in capsys.readouterr().err
+
+
+def test_the_report_shows_the_full_gate_against_the_band_of_the_probe(qwen_like, tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "flow.yml").write_text("name: w\ndata: {sources: []}\n")
+    home = tmp_path / "runs" / qwen_like.name / "w"
+    home.mkdir(parents=True)
+    ran(qwen_like, tmp_path, {3: 30.3, 2: 31.5}).rename(home / "probe")
+    ran(qwen_like, tmp_path, {3: 30.3, 2: 39.0}).rename(home / "full")
+    (home / "full/recorded.jsonl").write_text('{"finish_reason": "length"}\n{"finish_reason": "stop"}\n')
+    assert cli.main(["probe", str(qwen_like), "--workflow", "flow.yml", "--report"]) == 0
+    out = capsys.readouterr().out
+    assert out.count("probe     ") == 2 and "turns     2 recorded, 1 stopped at the token limit" in out
+    assert "full gate +1.00%: inside the band" in out and "full gate +30.00%: not in the band" in out
+    assert cli.main(["probe", str(qwen_like), "--workflow", "flow.yml", "--report", "--json"]) == 0
+    assert set(json.loads(capsys.readouterr().out)) == {"probe", "full"}
 
 
 def test_a_window_writes_the_result_and_the_memory_of_each_point(tmp_path):
