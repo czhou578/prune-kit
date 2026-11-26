@@ -133,6 +133,10 @@ The capture sends each calibration segment of the workflow once. It writes one r
 - The shared prefix (the system prompt and the tools) counts once. A token that the server did not fill does not count.
 - `--generate N` also counts the routing of N tokens that the model writes after each segment.
 - `--body JSON` adds keys to each request, for example `{"reasoning_effort": "medium"}`.
+- A model with a loop runs some layers more than one time (Inkling-2-Mini: 12 of its 24 layers run three times).
+  Its server gives one row for each pass of a layer. The capture keeps each pass, and it writes the loop of the
+  model into each row. The rank adds the passes of a layer: the passes share the weights, so one keep list serves
+  each pass.
 
 ```bash
 uv run prune-kit rank runs/unsloth--Qwen3.6-35B-A3B-NVFP4-Fast/coding-fast-route/capture.jsonl
@@ -235,10 +239,17 @@ uv run prune-kit probe unsloth/Qwen3.6-35B-A3B-NVFP4-Fast --workflow examples/co
   turns, score them, rank the sample, and build the pruned folder of each cut.
 - Each cut boots, and one client scores the same 20 turns.
 - The serve command comes from the profile of the model type, in `src/prune_kit/profiles/`. A model type with no
-  profile gets an error. Qwen3.5 and Qwen3.6 MoE have a profile.
+  profile gets an error. Qwen3.5 and Qwen3.6 MoE have a profile, and Inkling 2 with a loop has one.
+- A profile can start its server in a container: its serve command then has `{mounts}`. The plan gives absolute
+  paths, and the container gets the folder of the model and the run folder at the same paths. `down` of a profile
+  is the command that removes the server after its stop.
+- `replay` of a profile holds the settings of the replay gate for the model type: the tokens that start and end
+  the reasoning, the number of tokens of the decision, and the sampling. The gate commands of the window then have
+  `--profile TYPE`.
 - The command prints the `prune-kit window` command for the file. Run the dry run first.
 
-After the window, `--report` prints the result. It needs no machine file.
+After the window, `--report` prints the result. It needs no machine file. `--folder DIR` reads a probe folder
+that moved.
 
 ```bash
 uv run prune-kit probe unsloth/Qwen3.6-35B-A3B-NVFP4-Fast --workflow examples/coding-fast-route.yml --report
