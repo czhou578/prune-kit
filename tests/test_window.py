@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from prune_kit import cli, window
+from prune_moe_kit import cli, window
 
 T0 = datetime(2026, 11, 28, 22, 0)   # a Saturday
 at = lambda minutes: T0 + timedelta(minutes=minutes)

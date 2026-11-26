@@ -1,6 +1,6 @@
 import pytest
 
-from prune_kit import __version__, cli, stages
+from prune_moe_kit import __version__, cli, stages
 
 
 def test_stages_lists_each_stage_once(capsys):

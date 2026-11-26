@@ -80,7 +80,7 @@ def plan(facts: Facts, workflow, profile: dict, machine: dict, port: int = 8890,
     ``tokens=None``: the capture is the whole calibration split. ``name``: the run folder (``folder``). Each point
     names the results file of its run folder, so two plans can be one window."""
     run, url, flow = folder(facts, workflow, name), f"http://127.0.0.1:{port}", shlex.quote(str(workflow.path))
-    kit = f"{shlex.quote(sys.executable)} -m prune_kit.cli"
+    kit = f"{shlex.quote(sys.executable)} -m prune_moe_kit.cli"
     env = [f"{k}={shlex.quote(str(v))}" for k, v in {**profile.get("env", {}), **(more_env or {})}.items()]
     if machine.get("path"):
         env.append("PATH=" + ":".join([*machine["path"], "$PATH"]))

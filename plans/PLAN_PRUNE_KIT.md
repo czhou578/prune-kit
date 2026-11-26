@@ -51,7 +51,7 @@ calls that repo "the record".
 | vLLM overhead on Qwen | 6.2 to 7.7 GiB on top of the weights and the KV pin. No setting lowers it | `PLAN_QWEN_PRUNE.md` §7.4, §8 |
 | Time of a window | The Qwen capture (2.44M tokens, 99 segments) took 79 minutes of downtime. Gate window 1 took 33 minutes | `PLAN_QWEN_PRUNE.md` §6.1, §7.1 |
 | Stock DeepSeek checkpoint | On disk: 98.83 GiB in `~/Projects/DeepSeek-v4-Flash-One-DGX-Spark/data/tp1`. The layer files are `root:600` | `ls` |
-| Full Qwen checkpoint | On disk: 22.01 GiB of tensors. Its files are links into the shared blob folder of the Hugging Face cache, so `du` without `-L` shows 6.7 MB. `data/qwen-k208/PRUNE.json` names it as the source | `du -L`, `prune_kit.facts.inspect` |
+| Full Qwen checkpoint | On disk: 22.01 GiB of tensors. Its files are links into the shared blob folder of the Hugging Face cache, so `du` without `-L` shows 6.7 MB. `data/qwen-k208/PRUNE.json` names it as the source | `du -L`, `prune_moe_kit.facts.inspect` |
 | Qwen gate files | On disk: `results/qwen-recorded.jsonl` (the 60 recorded turns), `results/qwen-fit-g208-score.jsonl`, `results/qwen-rank.json` | `ls` |
 | Inkling-2-Mini | On disk, in the Hugging Face cache. 24 layers, and the middle 12 run three times. 128 experts per layer, 8 per token. The experts hold 14.59 GiB of 18.18 GiB (80%), 4.86 MiB per expert | `config.json`, the safetensors header |
 | Inkling-2-Mini, layout | One stacked tensor set per layer (`mlp.experts.w13_weight`, `w2_weight`, with scale tensors), in NVFP4 and MXFP8. The router has a bias (`mlp.gate.bias`). The MTP draft is dense and is in its own file | the safetensors index |

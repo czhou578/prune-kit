@@ -2,7 +2,7 @@ import os
 
 import pytest
 
-from prune_kit.resolve import ModelNotFound, hubs, resolve
+from prune_moe_kit.resolve import ModelNotFound, hubs, resolve
 
 
 def make_repo(hub, name, snapshots=("aaa",)):

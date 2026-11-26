@@ -85,7 +85,7 @@ meets the minimums, and 1 when it does not. `--stats` reads the sessions that ex
 - `budget` is the largest count of calibration tokens that the source gives. Each project gives one segment in turn.
 - `map: hermes` renames the Claude Code tools to the Hermes tools, as the Qwen prune did.
 - The sessions of another agent come in as `sessions`. Export them to the format of `sessions.jsonl` first: the
-  top of `src/prune_kit/sessions.py` describes the format.
+  top of `src/prune_moe_kit/sessions.py` describes the format.
 - A session of a project in `held_out.projects` is held out. Of the other sessions, a hash holds out `share`.
 
 The preflight also reads `sessions.jsonl` in the data folder of the workflow (`data.folder`, default
@@ -224,7 +224,7 @@ uv run prune-kit probe unsloth/Qwen3.6-35B-A3B-NVFP4-Fast --workflow examples/co
 - The full model boots with its capture flag. Its clients capture a sample of 400,000 tokens, record 20 held-out
   turns, score them, rank the sample, and build the pruned folder of each cut.
 - Each cut boots, and one client scores the same 20 turns.
-- The serve command comes from the profile of the model type, in `src/prune_kit/profiles/`. A model type with no
+- The serve command comes from the profile of the model type, in `src/prune_moe_kit/profiles/`. A model type with no
   profile gets an error. Qwen3.5 and Qwen3.6 MoE have a profile, and Inkling 2 with a loop has one.
 - A profile can start its server in a container: its serve command then has `{mounts}`. The plan gives absolute
   paths, and the container gets the folder of the model and the run folder at the same paths. `down` of a profile

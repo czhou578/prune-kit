@@ -1,7 +1,7 @@
 import json
 
-from prune_kit import cli, preflight
-from prune_kit.facts import inspect
+from prune_moe_kit import cli, preflight
+from prune_moe_kit.facts import inspect
 
 from conftest import write_st
 
@@ -25,7 +25,7 @@ def test_known_model_type_needs_only_the_prune_tool(qwen_like):
     assert r["verdict"] == "GO" and "prune-kit build: it gives the folder of the prune by hand" in preflight.text(r)
 
 
-def test_a_model_type_that_ran_through_prune_kit_is_proven(inkling_like):
+def test_a_model_type_that_ran_through_prune_moe_kit_is_proven(inkling_like):
     r = preflight.report(inspect(inkling_like), available=10)
     out = preflight.text(r)
     assert r["verdict"] == "GO" and "a server loaded K 120" in out and "one row for each pass" in out

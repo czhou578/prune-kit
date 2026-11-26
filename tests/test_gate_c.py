@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from prune_kit import capture, replay, sessions
+from prune_moe_kit import capture, replay, sessions
 
 RECORD = Path.home() / "Projects/dsv4-specialize"
 BOT = Path.home() / "Projects/stock-research-model-eval/model_eval/replay.py"   # the old scorer imports its post()

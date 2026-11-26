@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from prune_kit import capture, cli, rank, sessions
+from prune_moe_kit import capture, cli, rank, sessions
 
 from conftest import write_st
 from test_capture import Server, data

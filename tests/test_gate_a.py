@@ -8,9 +8,9 @@ from pathlib import Path
 
 import pytest
 
-from prune_kit.facts import PER_EXPERT, inspect
-from prune_kit.resolve import ModelNotFound, resolve
-from prune_kit.weights import WeightsError, tensors
+from prune_moe_kit.facts import PER_EXPERT, inspect
+from prune_moe_kit.resolve import ModelNotFound, resolve
+from prune_moe_kit.weights import WeightsError, tensors
 
 GIB, MIB = 1 << 30, 1 << 20
 DSV4 = os.environ.get("PRUNE_KIT_DSV4", str(Path.home() / "Projects/DeepSeek-v4-Flash-One-DGX-Spark/data/tp1"))

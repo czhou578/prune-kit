@@ -2,8 +2,8 @@ import json
 
 import pytest
 
-from prune_kit import capture, cli, judge, probe, sessions
-from prune_kit.facts import inspect
+from prune_moe_kit import capture, cli, judge, probe, sessions
+from prune_moe_kit.facts import inspect
 
 from test_probe import flow
 from test_replay import held

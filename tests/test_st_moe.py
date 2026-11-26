@@ -4,7 +4,7 @@ import struct
 
 import pytest
 
-from prune_kit import cli, st_moe
+from prune_moe_kit import cli, st_moe
 
 
 def store(path, tensors):

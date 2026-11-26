@@ -1,7 +1,7 @@
 import json
 import subprocess
 
-from prune_kit import cli, sessions, sources, workflow
+from prune_moe_kit import cli, sessions, sources, workflow
 
 LONG = "x" * 3000   # a segment needs 2,000 characters
 
