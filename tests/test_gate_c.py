@@ -23,7 +23,9 @@ def stub(log):
     def post(base, path, body, timeout=3600):
         log.append((path, json.dumps(body)))
         info = {"logprob": -1.0, "rank": 1, "decoded_token": "x"}
-        return {"tokens": [1, 2, 3]} if path == "/tokenize" else {"prompt_logprobs": [None] * 3 + [{"5": info}]}
+        if path == "/tokenize":   # the token of the reasoning end, or the three tokens of a context
+            return {"tokens": [9] if "prompt" in body else [1, 2, 3]}
+        return {"prompt_logprobs": [None] * 3 + [{"5": info}]}
     return post
 
 

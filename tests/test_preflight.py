@@ -25,7 +25,15 @@ def test_known_model_type_needs_only_the_prune_tool(qwen_like):
     assert r["verdict"] == "GO" and "prune-kit build: it gives the folder of the prune by hand" in preflight.text(r)
 
 
+def test_a_model_type_that_ran_through_prune_kit_is_proven(inkling_like):
+    r = preflight.report(inspect(inkling_like), available=10)
+    out = preflight.text(r)
+    assert r["verdict"] == "GO" and "a server loaded K 120" in out and "one row for each pass" in out
+
+
 def test_new_model_type_lists_each_missing_part(inkling_like):
+    config = json.loads((inkling_like / "config.json").read_text())
+    (inkling_like / "config.json").write_text(json.dumps(config | {"model_type": "new_loop"}))
     s = states(inkling_like, available=10)
     assert s == {"routed experts": "yes", "prune tool": "unknown", "capture": "unknown", "mask": "info",
                  "draft model": "info", "loop": "info", "memory": "info"}

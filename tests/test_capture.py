@@ -85,6 +85,12 @@ def test_run_counts_the_prefix_once_and_continues_after_a_failure(tmp_path):
     assert len(out.read_text().splitlines()) == 4 and len(log) == 4
 
 
+def test_a_model_with_a_loop_keeps_the_loop_in_each_row(tmp_path):
+    out = tmp_path / "capture.jsonl"
+    capture.run("http://x", "m", data(), None, out, 6, post=Server(), log=lambda _: None, loop=(1, 3, 2))
+    assert [json.loads(line).get("loop") for line in out.open()] == [[1, 3, 2], [1, 3, 2], None]   # the last one failed
+
+
 def test_generate_counts_the_new_tokens_and_the_extra_keys_reach_the_server(tmp_path):
     server = Server()
     extra = {"reasoning_effort": "medium"}

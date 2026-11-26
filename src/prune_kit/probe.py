@@ -12,6 +12,7 @@ stops a worker. The window has one point for the full model and one point for ea
 """
 
 import json
+import os
 import random
 import shlex
 import sys
@@ -55,18 +56,33 @@ def folder(facts: Facts, workflow) -> Path:
     return Path("runs") / slug(facts.folder) / workflow.name / "probe"
 
 
+def root(folder: Path) -> Path:
+    """The folder that holds a model folder and each file that its links name. A snapshot of the Hugging Face cache
+    links into the blob folder of its model, so a container needs the folder of the model."""
+    real = {str(p.resolve().parent) for p in folder.rglob("*") if p.is_symlink()}
+    return Path(os.path.commonpath([str(folder.resolve()), *real]))
+
+
 def plan(facts: Facts, workflow, profile: dict, machine: dict, port: int = 8890, tokens: int = 400_000,
          turns: int = 20, ranked=None, more=(), more_flags: str = "", more_env=None) -> dict:
     """The window file of the probe, as data. ``ranked``: a rank file of a full capture. The window then has no
     sample capture and builds each cut from that file. ``more``: the gates that each point also runs, of ``tasks``
     (the tool-call suite of model-benchmarks, from ``tools.model_benchmarks`` of the machine file), ``speed``, and
     ``judge`` (each cut also records its own turns, for ``prune-kit judge`` after the window). ``more_flags`` and
-    ``more_env``: more flags and variables for each test server, for example those of a draft model."""
+    ``more_env``: more flags and variables for each test server, for example those of a draft model.
+
+    A profile whose ``serve`` has ``{mounts}`` starts its server in a container: the model paths are absolute, and
+    the container gets the folder of the model and the run folder at the same paths. ``down`` of a profile is the
+    command that removes the server after its stop. ``replay`` of a profile holds the settings of the replay gate:
+    the gate commands then name the profile."""
     run, url, flow = folder(facts, workflow), f"http://127.0.0.1:{port}", shlex.quote(str(workflow.path))
     kit = f"{shlex.quote(sys.executable)} -m prune_kit.cli"
     env = [f"{k}={shlex.quote(str(v))}" for k, v in {**profile.get("env", {}), **(more_env or {})}.items()]
     if machine.get("path"):
         env.append("PATH=" + ":".join([*machine["path"], "$PATH"]))
+    inside = "{mounts}" in profile["serve"]
+    mounts = " ".join(f"-v {shlex.quote(f'{d}:{d}:ro')}" for d in (root(facts.folder), run.resolve())) if inside else ""
+    own = f" --profile {facts.model_type}" if profile.get("replay") else ""
 
     def extra(name: str) -> list:
         out, bench = [], machine.get("tools", {}).get("model_benchmarks")
@@ -77,25 +93,27 @@ def plan(facts: Facts, workflow, profile: dict, machine: dict, port: int = 8890,
                        f"-m benchmarks.tool_calling --base-url {url}/v1 --model {NAME} "
                        f"--output {shlex.quote(str((run / f'tools-{name}.json').resolve()))}")
         if "judge" in more and name != "full":   # the answers of the point to the same targets, with the same seeds
-            out.append(f"{kit} gate --record --workflow {flow} --base-url {url} --served {NAME} "
+            out.append(f"{kit} gate --record --workflow {flow} --base-url {url} --served {NAME}{own} "
                        f"--n {workflow.gates['judge']['turns']} --out {run}/recorded-{name}.jsonl")
         if "speed" in more:
             out.append(f"{kit} gate --speed --base-url {url} --served {NAME} --out {run}/speed-{name}.json")
         return out
 
     def point(name: str, model, freed: int, flags: str, clients: list) -> dict:
-        serve = profile["serve"].format(model=shlex.quote(str(model)), port=port, name=NAME)
+        model = Path(model).resolve() if inside else model
+        serve = profile["serve"].format(model=shlex.quote(str(model)), port=port, name=NAME, mounts=mounts)
+        down = {"down": profile["down"].format(name=NAME)} if profile.get("down") else {}
         need = (facts.total_bytes - freed) / GIB + profile.get("overhead_gib", 0)
         boot = " ".join(filter(None, ["env", *env, serve, flags, more_flags]))
         return {"name": name, "need_gib": round(need, 1), "health": f"{url}/health", "clients": clients + extra(name),
-                "boot": f"{boot} > {run}/server-{name}.log 2>&1"}
+                "boot": f"{boot} > {run}/server-{name}.log 2>&1", **down}
 
     ks = cuts(workflow, facts)
-    score = lambda name: (f"{kit} gate --score --workflow {flow} --base-url {url} --served {NAME} "
+    score = lambda name: (f"{kit} gate --score --workflow {flow} --base-url {url} --served {NAME}{own} "
                           f"--recorded {run}/recorded.jsonl --out {run}/score-{name}.jsonl")
     sample = [] if ranked else [f"{kit} capture {shlex.quote(str(facts.folder))} --workflow {flow} --base-url {url} "
                                 f"--served {NAME} --tokens {tokens} --out {run}/capture.jsonl"]
-    full = sample + [f"{kit} gate --record --workflow {flow} --base-url {url} --served {NAME} --n {turns} "
+    full = sample + [f"{kit} gate --record --workflow {flow} --base-url {url} --served {NAME}{own} --n {turns} "
                      f"--out {run}/recorded.jsonl", score("full")]
     if not ranked:
         full.append(f"{kit} rank {run}/capture.jsonl --out {run}/rank.json --k {' '.join(map(str, ks))}")

@@ -1,0 +1,32 @@
+# The adapter profile of Inkling 2 checkpoints with a loop (plans/PLAN_PRUNE_KIT.md §5.3): how a test server of this
+# model type starts. No vLLM release loads this model type on 2026-11-25. The server is the vLLM image that the vLLM
+# recipe names for the model, with the flags of `model-benchmarks` (its smoke test of 2026-11-20 on the DGX Spark).
+# - The server runs in a container. `{mounts}` gives it the folder of the model and the run folder. The two compile
+#   caches make the next start faster: the folders must exist, or Docker makes them with the owner root.
+# - The server renders a chat with its own code, with no generation prompt. A turn with reasoning starts with
+#   <|message_model|><|content_thinking|>, and the reasoning ends at the first <|end_message|>. The decision of a
+#   turn is in the next two tokens: <|message_model|>, then <|content_text|> or the name of a tool. The server does
+#   not read a special token from a text, so the profile gives the ids of the vocabulary (tokenizer.json).
+# - The capture flag needs the prefix cache of the server ("AuxOutput Connector requires prefix caching").
+# - A context of 128,000 tokens needs a KV pin of 15.3 GiB (the server log of 2026-11-25). The pin is 17 GiB.
+model_type: inkling2_loop
+server: vllm/vllm-openai@sha256:c2dc759f5984f69c1e2418c6af7c26eb756f5ed2a8934c768ae1253645d1449e
+serve: >-
+  docker run --rm --name prune-kit-{name} --gpus all --ipc=host --network host -e HF_HUB_OFFLINE=1 {mounts}
+  -v $HOME/.cache/inkling-docker/vllm:/root/.cache/vllm -v $HOME/.cache/inkling-docker/triton:/root/.triton
+  vllm/vllm-openai@sha256:c2dc759f5984f69c1e2418c6af7c26eb756f5ed2a8934c768ae1253645d1449e
+  {model} --host 127.0.0.1 --port {port} --served-model-name {name} --tensor-parallel-size 1
+  --gpu-memory-utilization 0.70 --kv-cache-memory-bytes 17G --max-model-len 128000 --max-num-seqs 1
+  --max-num-batched-tokens 8192 --moe-backend humming --kv-cache-dtype fp8_e4m3
+  --limit-mm-per-prompt '{{"image": 0}}' --compilation-config
+  '{{"mode":0,"cudagraph_mode":"FULL_DECODE_ONLY","decode_cudagraph_capture_request_sizes":[1],"prefill_cudagraph_capture_token_sizes":[]}}'
+  --reasoning-parser inkling --tool-call-parser inkling --enable-auto-tool-choice --generation-config vllm
+down: docker rm -f prune-kit-{name}   # the stop of the client can leave the container
+capture_flag: --enable-return-routed-experts
+draft: keep          # the draft model is dense and is in its own file: a point keeps it whole
+overhead_gib: 23     # the KV pin of 17 GiB, and the overhead of the server
+replay:
+  end_think: 200010      # <|end_message|>
+  start_think: 200008    # <|content_thinking|>
+  decision_tokens: 2
+  sampling: {temperature: 1.0}   # generation_config.json of the checkpoint

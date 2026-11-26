@@ -104,14 +104,22 @@ def test_the_stacked_layout_keeps_rows_and_a_tensor_with_one_value(tmp_path):
         "model.llm.layers.0.mlp.gate.weight": ((4, 2), rows(0, 1, 2, 3, width=2)),
         "model.llm.layers.0.mlp.gate.bias": ((4,), bytes([0, 1, 2, 3]))})
     (folder / "config.json").write_text(json.dumps({"text_config": {"n_routed_experts": 4}}))
+    store(folder / "mtp.safetensors", {"fuse_weight": ((1,), b"\x01")})   # a dense draft model in its own file
+    (folder / "model.safetensors.index.json").write_text(json.dumps({"weight_map": {"a": "model.safetensors"}}))
+    (folder / "tiktoken").mkdir()
+    (folder / "tiktoken/tokenizer.model").write_text("the tokenizer of some models is in a folder")
     st_moe.prune(folder, tmp_path / "out", {"layers": {"0": [{"id": 3}, {"id": 0}, {"id": 2}, {"id": 1}]}}, 3)
+    assert (tmp_path / "out/tiktoken/tokenizer.model").read_text().startswith("the tokenizer")
     got = read(tmp_path / "out/model.safetensors")
     assert got["model.llm.layers.0.mlp.experts.w13_weight"] == ([3, 2], rows(0, 2, 3, width=2))
     assert got["model.llm.layers.0.mlp.experts.w13_weight_amax"] == ([3], bytes([0, 2, 3]))
     assert got["model.llm.layers.0.mlp.experts.w13_scale"] == ([1], b"\x07")
     assert got["model.llm.layers.0.mlp.gate.bias"] == ([3], bytes([0, 2, 3]))
     assert json.loads((tmp_path / "out/config.json").read_text())["text_config"]["n_routed_experts"] == 3
-    assert st_moe.check(folder, tmp_path / "out") == 5
+    index = json.loads((tmp_path / "out/model.safetensors.index.json").read_text())["weight_map"]
+    assert len(index) == 5 and set(index.values()) == {"model.safetensors"}   # the index of the source has no draft
+    assert read(tmp_path / "out/mtp.safetensors") == {"fuse_weight": ([1], b"\x01")}
+    assert st_moe.check(folder, tmp_path / "out") == 6
 
 
 def test_check_finds_a_changed_byte_a_lost_tensor_and_a_wrong_config(source, tmp_path):

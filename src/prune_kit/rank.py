@@ -13,8 +13,25 @@ class RankError(Exception):
     pass
 
 
+def fold(total: list, loop) -> list:
+    """The counts of each layer of the weights, for a model whose layers ``start`` to ``end - 1`` run ``passes``
+    times. The server gives one row for each pass of a layer, in the order of the run: the layers before the loop,
+    each pass of the loop, the layers after it. The counts of a layer are the sum of its passes."""
+    start, end, passes = loop
+    core = end - start
+    if len(total) < start + passes * core:
+        raise RankError(f"the capture has {len(total)} layer rows, fewer than the {passes} passes of the loop")
+    out = [[0] * len(total[0]) for _ in range(len(total) - (passes - 1) * core)]
+    for visit, row in enumerate(total):
+        after = visit >= start + passes * core
+        layer = visit if visit < start else visit - (passes - 1) * core if after else start + (visit - start) % core
+        out[layer] = [a + b for a, b in zip(out[layer], row)]
+    return out
+
+
 def totals(rows) -> list:
-    """The counts of each expert in each layer, over each row with no error. The counts of generated tokens add."""
+    """The counts of each expert in each layer, over each row with no error. The counts of generated tokens add.
+    The rows of a model with a loop hold the key ``loop``: see ``fold``."""
     rows = [r for r in rows if "error" not in r]
     if not rows:
         raise RankError("the capture has no segment with counts")
@@ -25,7 +42,7 @@ def totals(rows) -> list:
                 raise RankError(f"segment {r.get('session')}:{r.get('segment')} has another count of layers or experts")
             for layer, row in enumerate(counts or []):
                 total[layer] = [a + b for a, b in zip(total[layer], row)]
-    return total
+    return fold(total, rows[0]["loop"]) if rows[0].get("loop") else total
 
 
 def rank(rows) -> dict:

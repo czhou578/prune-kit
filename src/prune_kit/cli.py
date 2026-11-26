@@ -61,7 +61,7 @@ def cmd_capture(a) -> int:
     """Exit code 0: each segment has its counts. 1: a segment failed. 2: a fault before the first request."""
     try:
         flow, folder = workflow.load(a.workflow), resolve(a.model, a.hub)
-        experts = inspect(folder).max_experts
+        facts = inspect(folder)
         data = sessions.load(flow.folder / "sessions.jsonl")
         tools = _tools(flow.folder)
         served = a.served or capture.post(a.base_url, "/v1/models", None)["data"][0]["id"]
@@ -69,8 +69,8 @@ def cmd_capture(a) -> int:
         print(f"prune-kit: {e}", file=sys.stderr)
         return 2
     out = Path(a.out or Path("runs") / slug(folder) / flow.name / "capture.jsonl")
-    failed = capture.run(a.base_url, served, data, tools, out, experts, a.limit, json.loads(a.body), a.generate,
-                         max_tokens=a.tokens)
+    failed = capture.run(a.base_url, served, data, tools, out, facts.max_experts, a.limit, json.loads(a.body),
+                         a.generate, max_tokens=a.tokens, loop=facts.loop)
     print(f"capture   {out}" + (f": {failed} segments failed; start the command again" if failed else ""))
     return 1 if failed else 0
 
@@ -127,12 +127,15 @@ def cmd_gate(a) -> int:
         folder = Path(a.data) if a.data else flow.folder
         data, tools = sessions.load(folder / "sessions.jsonl"), _tools(folder)
         served = a.served or (None if a.from_data else capture.post(a.base_url, "/v1/models", None)["data"][0]["id"])
+        own = probe.load_profile(a.profile).get("replay", {}) if a.profile else {}
         if a.record:
             turns = a.n or (flow.gates["nll"]["turns"] if flow else 60)
-            failed = replay.record(a.base_url, served, data, tools, turns, a.out, from_data=a.from_data)
+            more = {k: own[k] for k in ("sampling", "max_tokens") if k in own}
+            failed = replay.record(a.base_url, served, data, tools, turns, a.out, from_data=a.from_data, **more)
         else:
-            failed = replay.score(a.base_url, served, data, tools, sessions.load(a.recorded), a.out)
-    except (workflow.WorkflowError, OSError, ValueError, KeyError) as e:
+            more = {k: own[k] for k in ("end_think", "start_think", "decision_tokens") if k in own}
+            failed = replay.score(a.base_url, served, data, tools, sessions.load(a.recorded), a.out, **more)
+    except (workflow.WorkflowError, probe.ProbeError, OSError, ValueError, KeyError) as e:
         print(f"prune-kit: {e}", file=sys.stderr)
         return 2
     done = "recorded" if a.record else "scored"
@@ -159,7 +162,7 @@ def cmd_probe(a) -> int:
     try:
         flow, facts = workflow.load(a.workflow), inspect(resolve(a.model, a.hub))
         if a.report:
-            r = probe.report(facts, flow, ranked=a.rank)
+            r = probe.report(facts, flow, a.folder, a.rank)
             print(json.dumps(r, indent=2) if a.json else probe.text(r))
             return 0
         if not a.machine:
@@ -253,6 +256,7 @@ def parser() -> argparse.ArgumentParser:
     g.add_argument("--out", metavar="FILE", help="the output of --record or --score; a second start continues it")
     g.add_argument("--n", type=int, metavar="N", help="--record: the number of turns (default: gates.nll.turns)")
     g.add_argument("--from-data", action="store_true", help="--record: the own turns of the data, with no server")
+    g.add_argument("--profile", metavar="TYPE", help="the model type: its profile gives the replay settings")
     g.set_defaults(run=cmd_gate)
     w = sub.add_parser("window", help="run the points of a window file on test servers, then restore the workers")
     w.add_argument("window", metavar="FILE", help="the window file: the points with their servers and clients")
@@ -276,6 +280,7 @@ def parser() -> argparse.ArgumentParser:
     o.add_argument("--env", action="append", default=[], metavar="NAME=VALUE", help="one more variable for each server")
     o.add_argument("--report", action="store_true", help="print the result of the probe that ran; write no file")
     o.add_argument("--json", action="store_true", help="--report: print the result as JSON")
+    o.add_argument("--folder", metavar="DIR", help="--report: the folder of the probe, if it moved")
     o.add_argument("--port", type=int, default=8890, help="the test port (default 8890); never a live port")
     o.add_argument("--tokens", type=int, default=400_000, help="the prompt tokens of the sample capture")
     o.add_argument("--turns", type=int, default=20, help="the held-out turns that each point scores")

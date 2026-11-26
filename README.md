@@ -12,9 +12,10 @@ One pipeline that prunes a local model for one workflow.
 
 ## Status
 
-Stages I and II of [the plan](plans/PLAN_PRUNE_KIT.md) are built: the blueprint, the quick check, and the shared
-stages. Stage III, the measurements, is in work: the probe, the gates and the judge are built, and three real windows
-ran on the full Qwen on 2026-11-25. Each gate ran in a real window. The third model is not started. §6 of the plan has the results.
+Stages I, II and III of [the plan](plans/PLAN_PRUNE_KIT.md) are built: the blueprint, the quick check, the shared
+stages, and the measurements. Each gate of the project passes. The preflight gives the numbers of the two prunes by
+hand (Qwen, DeepSeek). Two models ran through the pipeline in real windows on 2026-11-25: Qwen against its prune by
+hand, and Inkling-2-Mini with no prune by hand. §6 of the plan has the results.
 
 | Part | State |
 |---|---|
@@ -24,10 +25,10 @@ ran on the full Qwen on 2026-11-25. Each gate ran in a real window. The third mo
 | The workflow file, and `prune-kit preflight MODEL --workflow FILE` | Built |
 | `prune-kit data FILE`: the sessions of a workflow, the held-out split, the secret pass | Built |
 | `prune-kit capture MODEL` and `prune-kit rank CAPTURE`: the routed experts of the workflow, and their order | Built. The capture ran on a real capture server in the probe |
-| `prune-kit build MODEL`: the pruned folder, and its check against the source | Built for safetensors checkpoints. Not for EXL3 |
+| `prune-kit build MODEL`: the pruned folder, and its check against the source | Built for safetensors checkpoints. A server loaded pruned folders of Qwen (per-expert layout) and of Inkling (stacked layout). Not for EXL3 |
 | `prune-kit gate`: the replay gates `nll` and `tools`: record, score, compare | Built |
-| `prune-kit window`: test servers in one window, with the restore of the workers | Built. Three real windows ran on 2026-11-25 |
-| `prune-kit probe MODEL`: the window file of a probe, and its report | Built for the Qwen model type. One probe of the full Qwen ran |
+| `prune-kit window`: test servers in one window, with the restore of the workers | Built. Real windows ran on Qwen and on Inkling on 2026-11-25 |
+| `prune-kit probe MODEL`: the window file of a probe, and its report | Built for Qwen3.5 and Qwen3.6 MoE, and for Inkling 2 with a loop. A probe of each one ran |
 | The gates `tasks`, `speed` and `memory`, and the verdict of a point in the report | Built. They ran in the gates window of 2026-11-25 |
 | `prune-kit judge`: the gate `judge`, with the blind page for your own review | Built. DeepSeek judged two cuts of the full Qwen on 2026-11-25 |
 
@@ -133,6 +134,10 @@ The capture sends each calibration segment of the workflow once. It writes one r
 - The shared prefix (the system prompt and the tools) counts once. A token that the server did not fill does not count.
 - `--generate N` also counts the routing of N tokens that the model writes after each segment.
 - `--body JSON` adds keys to each request, for example `{"reasoning_effort": "medium"}`.
+- A model with a loop runs some layers more than one time (Inkling-2-Mini: 12 of its 24 layers run three times).
+  Its server gives one row for each pass of a layer. The capture keeps each pass, and it writes the loop of the
+  model into each row. The rank adds the passes of a layer: the passes share the weights, so one keep list serves
+  each pass.
 
 ```bash
 uv run prune-kit rank runs/unsloth--Qwen3.6-35B-A3B-NVFP4-Fast/coding-fast-route/capture.jsonl
@@ -235,10 +240,17 @@ uv run prune-kit probe unsloth/Qwen3.6-35B-A3B-NVFP4-Fast --workflow examples/co
   turns, score them, rank the sample, and build the pruned folder of each cut.
 - Each cut boots, and one client scores the same 20 turns.
 - The serve command comes from the profile of the model type, in `src/prune_kit/profiles/`. A model type with no
-  profile gets an error. Qwen3.5 and Qwen3.6 MoE have a profile.
+  profile gets an error. Qwen3.5 and Qwen3.6 MoE have a profile, and Inkling 2 with a loop has one.
+- A profile can start its server in a container: its serve command then has `{mounts}`. The plan gives absolute
+  paths, and the container gets the folder of the model and the run folder at the same paths. `down` of a profile
+  is the command that removes the server after its stop.
+- `replay` of a profile holds the settings of the replay gate for the model type: the tokens that start and end
+  the reasoning, the number of tokens of the decision, and the sampling. The gate commands of the window then have
+  `--profile TYPE`.
 - The command prints the `prune-kit window` command for the file. Run the dry run first.
 
-After the window, `--report` prints the result. It needs no machine file.
+After the window, `--report` prints the result. It needs no machine file. `--folder DIR` reads a probe folder
+that moved.
 
 ```bash
 uv run prune-kit probe unsloth/Qwen3.6-35B-A3B-NVFP4-Fast --workflow examples/coding-fast-route.yml --report

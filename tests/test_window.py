@@ -213,7 +213,12 @@ def test_the_real_system_stops_a_process_that_ignores_sigterm(tmp_path):
     child = int((tmp_path / "child").read_text())
     assert window.System.alive(process.pid)
     system.kill(process, patience=1)
-    assert not window.System.alive(process.pid) and not Path(f"/proc/{child}").exists()
+    assert not window.System.alive(process.pid)
+    for _ in range(40):   # the child has a new parent after the stop: its entry stays until that parent reads its end
+        if not Path(f"/proc/{child}").exists():
+            break
+        system.sleep(0.05)
+    assert not Path(f"/proc/{child}").exists()
 
 
 def test_a_failed_start_gets_its_second_try_soon_and_the_cache_is_released():

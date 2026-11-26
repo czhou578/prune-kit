@@ -179,13 +179,20 @@ def prune(source, out, rank: dict, k: int, draft: str = "rank") -> dict:
         write(out / f.name, f, items, head.get("__metadata__"))
         weight_map.update({item[0]: f.name for item in items})
         dropped += len(head) - ("__metadata__" in head) - len(items)
-    for f in source.iterdir():
-        if f.suffix != ".safetensors" and f.is_file() and f.name not in NOT_COPIED:
+    for f in source.iterdir():   # each other file, and each folder (the tokenizer files of some models)
+        if f.is_dir():
+            shutil.copytree(f, out / f.name)
+        elif f.suffix != ".safetensors" and f.is_file() and f.name not in NOT_COPIED:
             shutil.copy(f, out / f.name)
     (out / "config.json").write_text(json.dumps(config, indent=2) + "\n")
+    # The index names the files of the target model. A server loads each file of the index into the target, so a
+    # draft model in its own file stays out of the index, as in the source (Inkling: mtp.safetensors).
     index = source / NOT_COPIED[1]
-    meta = json.loads(index.read_text()).get("metadata", {}) if index.exists() else {}
-    (out / NOT_COPIED[1]).write_text(json.dumps({"metadata": meta, "weight_map": weight_map}, indent=1))
+    old = json.loads(index.read_text()) if index.exists() else {}
+    named = set(old.get("weight_map", {}).values()) or set(weight_map.values())
+    (out / NOT_COPIED[1]).write_text(json.dumps({
+        "metadata": old.get("metadata", {}),
+        "weight_map": {name: file for name, file in weight_map.items() if file in named}}, indent=1))
     (out / "PRUNE.json").write_text(json.dumps({"source": str(source), "keep": k, "draft": draft, "experts": experts,
                                                 "kept_ids": {str(layer): ids for layer, ids in keep.items()}}))
     return {"kept": len(weight_map), "dropped": dropped, "bytes": need}

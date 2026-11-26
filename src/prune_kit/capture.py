@@ -134,11 +134,11 @@ def targets(sessions, split: str = "calibration"):
 
 
 def run(base, model, sessions, tools, out, experts, limit=None, extra=None, generate=0, post=None, log=print,
-        max_tokens=None) -> int:
+        max_tokens=None, loop=None) -> int:
     """Capture each calibration segment that ``out`` does not hold yet. A failed segment gets a row with the
     error, and the run goes on. Return the number of failed segments. ``max_tokens``: a sample. The segments come
     in a fixed order by a hash, so that each session gives to the sample, and the run stops at that many prompt
-    tokens."""
+    tokens. ``loop``: the loop of the model (``Facts.loop``). Each row keeps it, and the rank folds the passes."""
     out = Path(out)
     rows = [json.loads(line) for line in out.open()] if out.exists() else []
     done = {(r["session"], r["segment"]) for r in rows if "error" not in r}
@@ -157,6 +157,7 @@ def run(base, model, sessions, tools, out, experts, limit=None, extra=None, gene
             row, began = {"session": s["id"], "segment": g, "index": i, "skill": s["skill"]}, time.monotonic()
             try:
                 row |= capture_one(base, model, s, g, i, tools, seen, experts, extra, generate, post)
+                row |= {"loop": list(loop)} if loop else {}
                 seen.add(row["prefix"])
                 used += row["prompt_tokens"]
             except Exception as e:   # the row records the failure
