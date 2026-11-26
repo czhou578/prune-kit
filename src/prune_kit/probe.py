@@ -52,8 +52,9 @@ def cuts(workflow, facts: Facts) -> list[int]:
     return ks
 
 
-def folder(facts: Facts, workflow) -> Path:
-    return Path("runs") / slug(facts.folder) / workflow.name / "probe"
+def folder(facts: Facts, workflow, name: str = "probe") -> Path:
+    """The run folder: ``probe`` for a probe, ``full`` for the full gate of ``prune-kit probe --full``."""
+    return Path("runs") / slug(facts.folder) / workflow.name / name
 
 
 def root(folder: Path) -> Path:
@@ -64,7 +65,7 @@ def root(folder: Path) -> Path:
 
 
 def plan(facts: Facts, workflow, profile: dict, machine: dict, port: int = 8890, tokens: int = 400_000,
-         turns: int = 20, ranked=None, more=(), more_flags: str = "", more_env=None) -> dict:
+         turns: int = 20, ranked=None, more=(), more_flags: str = "", more_env=None, name: str = "probe") -> dict:
     """The window file of the probe, as data. ``ranked``: a rank file of a full capture. The window then has no
     sample capture and builds each cut from that file. ``more``: the gates that each point also runs, of ``tasks``
     (the tool-call suite of model-benchmarks, from ``tools.model_benchmarks`` of the machine file), ``speed``, and
@@ -74,8 +75,11 @@ def plan(facts: Facts, workflow, profile: dict, machine: dict, port: int = 8890,
     A profile whose ``serve`` has ``{mounts}`` starts its server in a container: the model paths are absolute, and
     the container gets the folder of the model and the run folder at the same paths. ``down`` of a profile is the
     command that removes the server after its stop. ``replay`` of a profile holds the settings of the replay gate:
-    the gate commands then name the profile."""
-    run, url, flow = folder(facts, workflow), f"http://127.0.0.1:{port}", shlex.quote(str(workflow.path))
+    the gate commands then name the profile.
+
+    ``tokens=None``: the capture is the whole calibration split. ``name``: the run folder (``folder``). Each point
+    names the results file of its run folder, so two plans can be one window."""
+    run, url, flow = folder(facts, workflow, name), f"http://127.0.0.1:{port}", shlex.quote(str(workflow.path))
     kit = f"{shlex.quote(sys.executable)} -m prune_kit.cli"
     env = [f"{k}={shlex.quote(str(v))}" for k, v in {**profile.get("env", {}), **(more_env or {})}.items()]
     if machine.get("path"):
@@ -106,13 +110,13 @@ def plan(facts: Facts, workflow, profile: dict, machine: dict, port: int = 8890,
         need = (facts.total_bytes - freed) / GIB + profile.get("overhead_gib", 0)
         boot = " ".join(filter(None, ["env", *env, serve, flags, more_flags]))
         return {"name": name, "need_gib": round(need, 1), "health": f"{url}/health", "clients": clients + extra(name),
-                "boot": f"{boot} > {run}/server-{name}.log 2>&1", **down}
+                "boot": f"{boot} > {run}/server-{name}.log 2>&1", **down, "results": f"{run}/window.json"}
 
     ks = cuts(workflow, facts)
     score = lambda name: (f"{kit} gate --score --workflow {flow} --base-url {url} --served {NAME}{own} "
                           f"--recorded {run}/recorded.jsonl --out {run}/score-{name}.jsonl")
     sample = [] if ranked else [f"{kit} capture {shlex.quote(str(facts.folder))} --workflow {flow} --base-url {url} "
-                                f"--served {NAME} --tokens {tokens} --out {run}/capture.jsonl"]
+                                f"--served {NAME}{f' --tokens {tokens}' if tokens else ''} --out {run}/capture.jsonl"]
     full = sample + [f"{kit} gate --record --workflow {flow} --base-url {url} --served {NAME}{own} --n {turns} "
                      f"--out {run}/recorded.jsonl", score("full")]
     if not ranked:
@@ -126,14 +130,15 @@ def plan(facts: Facts, workflow, profile: dict, machine: dict, port: int = 8890,
     return {"release": [str(facts.folder), str(run)], "points": points}
 
 
-def write(facts: Facts, workflow, window: dict) -> Path:
-    """Write the window file into the probe folder. Refuse a folder that holds a result of an earlier probe."""
-    run = folder(facts, workflow)
-    old = [p.name for p in run.glob("*") if p.name != "window.yml"] if run.exists() else []
-    if old:
-        raise ProbeError(f"{run} holds the files of an earlier probe ({', '.join(sorted(old)[:4])}): move the folder")
-    run.mkdir(parents=True, exist_ok=True)
-    path = run / "window.yml"
+def write(facts: Facts, workflow, window: dict, names=("probe",)) -> Path:
+    """Write the window file into the first run folder. Refuse a run folder that holds a result of an earlier run."""
+    for name in names:
+        run = folder(facts, workflow, name)
+        old = [p.name for p in run.glob("*") if p.name != "window.yml"] if run.exists() else []
+        if old:
+            raise ProbeError(f"{run} holds the files of an earlier run ({', '.join(sorted(old)[:4])}): move the folder")
+        run.mkdir(parents=True, exist_ok=True)
+    path = folder(facts, workflow, names[0]) / "window.yml"
     path.write_text("# The window file of a probe, from `prune-kit probe`. Run it with `prune-kit window`.\n"
                     + yaml.safe_dump(window, sort_keys=False, width=10_000))
     return path
@@ -183,16 +188,32 @@ def report(facts: Facts, workflow, run: Path | None = None, ranked=None) -> dict
         estimate = next((k for k in range(facts.per_token or 1, facts.max_experts)
                          if 100 * rank.removed(ranked, k) * slope <= limit), None)
     memory = json.loads(w.read_text())["points"] if (w := run / "window.json").exists() else []
+    recorded = load(run / "recorded.jsonl") if (run / "recorded.jsonl").exists() else []
     peak = next((m["available_before_gib"] - m["available_lowest_gib"] for m in memory if m["name"] == "full"), None)
     return {"folder": str(run), "segments": ranked["segments"], "prompt_tokens": ranked["prompt_tokens"],
-            "limit_pct": limit, "points": points, "slope": slope, "estimate_k": estimate,
+            "limit_pct": limit, "points": points, "slope": slope, "estimate_k": estimate, "recorded": len(recorded),
+            "at_limit": sum(r.get("finish_reason") == "length" for r in recorded),
             "estimate_freed_bytes": facts.freed(estimate) if estimate else None, "full_peak_gib": peak,
             "weights_gib": facts.total_bytes / GIB}
 
 
+def agree(probe_run: dict, full_run: dict) -> str:
+    """The full gate against the band of the probe, for each cut of both reports (gate D of the plan)."""
+    full = {p["k"]: p["nll_change_pct"] for p in full_run["points"]}
+    lines = ["the probe against the full gate"]
+    for p in probe_run["points"]:
+        if p["k"] in full:
+            (low, high), cost = p["band"], full[p["k"]]
+            lines.append(f"K {p['k']:<6}probe {p['nll_change_pct']:+.2f}% (band {low:+.2f}% to {high:+.2f}%), "
+                         f"full gate {cost:+.2f}%: {'inside the band' if low <= cost <= high else 'not in the band'}")
+    return "\n".join(lines)
+
+
 def text(r: dict) -> str:
     lines = [f"probe     {r['folder']}",
-             f"sample    {r['segments']} segments, {r['prompt_tokens']:,} prompt tokens", "",
+             f"sample    {r['segments']} segments, {r['prompt_tokens']:,} prompt tokens",
+             *([f"turns     {r['recorded']} recorded, {r['at_limit']} stopped at the token limit: such a turn has no "
+                "decision to score"] if r["at_limit"] else []), "",
              f"{'point':<8}{'freed':>10}{'routing removed':>18}{'overlap':>9}{'NLL change':>12}{'band (90%)':>20}  "
              f"gate nll (+{r['limit_pct']:g}%)"]
     for p in r["points"]:
@@ -205,7 +226,8 @@ def text(r: dict) -> str:
         parts = [f"tasks {t['new']} of {t['of']} (the full model: {t['reference']})" if (t := p["tasks"]) else "",
                  f"peak {m['peak_gib']:.1f} GiB" + (f" (goal {m['goal_gib']:g})" if m["goal_gib"] else "")
                  if (m := p["memory"]) else "",
-                 f"speed {v['tokens_per_second']} tok/s (the full model: {v['reference']})"
+                 f"speed {v['tokens_per_second']} tok/s (the full model: {v['reference']}"
+                 + (f", {c:+g}% for the same prompts)" if (c := v.get("change_pct")) is not None else ")")
                  if (v := p["speed"]) else "",
                  f"judge {'no loss' if j['ok'] else 'a loss'} ({j['summary']})" if (j := p["judge"]) else ""]
         lines.append(f"K {p['k']:<6}verdict: {p['verdict']}" + "".join(f"; {x}" for x in parts if x))

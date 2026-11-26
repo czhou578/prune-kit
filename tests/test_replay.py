@@ -49,7 +49,7 @@ def test_the_gate_command_gives_the_replay_settings_of_a_profile(tmp_path, monke
               "--profile"]
     assert cli.main([*common, "inkling2_loop", "--record", "--n", "2"]) == 0
     assert cli.main([*common, "inkling2_loop", "--score", "--recorded", str(tmp_path / "sessions.jsonl")]) == 0
-    assert got["record"] == {"from_data": False, "sampling": {"temperature": 1.0}}
+    assert got["record"] == {"from_data": False, "sampling": {"temperature": 1.0}, "max_tokens": 1600}
     assert got["score"] == {"end_think": 200010, "start_think": 200008, "decision_tokens": 2}
     assert cli.main([*common, "no_such_type", "--record"]) == 2
 
