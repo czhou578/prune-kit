@@ -213,7 +213,7 @@ def cmd_judge(a) -> int:
 
 
 def parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="prune-kit", description="Prune a local model for one workflow.")
+    p = argparse.ArgumentParser(prog="prune-kit", description="Prune a local MoE model for one workflow.")
     p.add_argument("--version", action="version", version=f"prune-kit {__version__}")
     sub = p.add_subparsers(dest="command", required=True)
     s = sub.add_parser("stages", help="list the stages of a prune and the command of each stage")

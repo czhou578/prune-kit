@@ -1,7 +1,7 @@
 [project]
 name = "prune-kit"
 version = "0.1.0"
-description = "One pipeline that prunes a local model for one workflow."
+description = "One pipeline that prunes a local mixture-of-experts (MoE) model for one workflow."
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
