@@ -154,6 +154,10 @@ def cmd_window(a) -> int:
         return 2
     log = lambda line: print(f"{datetime.now():%F %T} {line}", flush=True)
     system = window.DryRun(log, machine, datetime.now()) if a.dry_run else None
+    if a.dry_run:   # a dry run writes no results file
+        points = [{k: v for k, v in p.items() if k != "results"} for p in points]
+    else:
+        window.on_stop()
     return window.Window(machine, a.stop, *times, system, log, None if a.dry_run else a.results, release).run(points)
 
 

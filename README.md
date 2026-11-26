@@ -215,6 +215,12 @@ The rules of a window:
 - A boot that is not healthy in 15 minutes goes down. After two failed boots in a row, no more point boots.
 - A watch reads the available memory and the free swap during each client. Below a limit, it stops the client.
 - The window always ends with the restore of each worker that it stopped. Exit code 3 means that the restore failed.
+- A stop of the runner is a failure of the window, and not the end of the restore: after Ctrl-C, `kill`, or the end
+  of its terminal, the runner stops its client and its test server, and it restores the workers. A second stop has
+  no effect.
+- CAUTION: `kill -9` gives the runner no time. The workers then stay down, and you must start them by hand.
+- A point can name a results file with its key `results`. The runner writes the result and the memory of the point
+  to that file, and to the file of `--results`.
 - The runner stops the whole process group of a test server, and it waits until the health URL is silent. A
   server that still answers would look like the next point.
 - A window file can list folders under `release`. The runner asks the kernel to drop their cached pages before
