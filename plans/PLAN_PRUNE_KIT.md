@@ -480,13 +480,40 @@ in `runs/thinkingmachines--Inkling-2-Mini/coding-record` (`probe` and `full`).
   keeps a draft file out of the weight index, as the source does, and it copies each sub-folder of the source (the
   tokenizer of Inkling). The preflight now gives GO for the model type `inkling2_loop`.
 
+**The gates window of Inkling (2026-11-25, 21:18 to 22:52).** One window ran each other gate on the full Inkling
+and on K 112, with the rank of the full capture and 30 held-out turns. After the window, DeepSeek judged 30 blind
+pairs. The files are in `runs/thinkingmachines--Inkling-2-Mini/inkling-gates/probe`.
+
+| Gate | Full model | K 112 |
+|---|---|---|
+| `nll` (limit +3%) | Reference | +2.14% (band +1.65% to +2.83%): pass |
+| `tools` | Reference | Pass |
+| `tasks` (85 tasks, at most 3 fewer) | 49 | 51: pass |
+| `judge` (30 blind pairs, DeepSeek) | Reference | Better 13, worse 6, equal 11 (p = 0.17): no loss |
+| `speed` (no limit) | 37.59 tok/s | 37.54 tok/s, -0.2% for the same prompts |
+| Memory peak | 43.7 GiB | 42.7 GiB |
+| Verdict | | pass |
+
+- **K 112 of Inkling passes each gate.** It frees 1.82 GiB of the 18.78 GiB of weights. Three windows measured its
+  `nll` change: +2.01%, +1.97% and +2.14%.
+- **The gate `speed` now shows a small change.** The eight prompts of one point differ by less than 1% on Inkling,
+  with no draft model. The cut does not change the speed.
+- **The limit of 1,600 tokens does not help.** 7 of the 30 turns still stopped at the limit, as many as with 800
+  tokens (13 of 60). Such a turn stays in its reasoning: the model card says that the model can stay in a long
+  reasoning loop.
+- **Each point needed 44 minutes**, and 18 minutes of them for the tool-call suite: Inkling writes 37 tokens per
+  second. The window stopped Qwen for 94 minutes and DeepSeek for 90 minutes.
+- **The first start of Qwen in the restore failed** after 20 seconds, with 25 GiB available. The runner made its
+  second try after one minute, and that start worked. The log of the first try is lost: the start script writes
+  each try to the same file.
+
 **The hardening after stage III (2026-11-25).** The real windows showed five weak points. Two pull requests
 repair them, with no window.
 
 | PR | Content | State |
 |---|---|---|
 | H1 | The window runner: a stop of the runner (Ctrl-C, `kill`, the end of its terminal) stops the client and the test server and restores the workers. A point can name its results file. The machine file has the night-train hours of DeepSeek (00:30 each night) | Built. A real stop of a runner with stand-in servers restored its worker |
-| H2 | `prune-kit probe --full`: the probe and the full gate in one window, and a report that compares them. The gate `speed` has eight prompts and shows the change for the same prompts. A profile sets the limit of a recorded turn (Inkling: 1,600 tokens), and the report counts the turns that stopped at the limit | Built. The report gives the numbers of gate D from the files of the Inkling window. No window ran with these changes |
+| H2 | `prune-kit probe --full`: the probe and the full gate in one window, and a report that compares them. The gate `speed` has eight prompts and shows the change for the same prompts. A profile sets the limit of a recorded turn (Inkling: 1,600 tokens), and the report counts the turns that stopped at the limit | Built. The report gives the numbers of gate D from the files of the Inkling window. The gates window of Inkling ran with the new gate `speed`, the new limit and the results file of a point. No window ran with `--full` |
 
 ## 7. The gates of the project
 

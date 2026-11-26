@@ -29,8 +29,8 @@ hand, and Inkling-2-Mini with no prune by hand. §6 of the plan has the results.
 | `prune-kit gate`: the replay gates `nll` and `tools`: record, score, compare | Built |
 | `prune-kit window`: test servers in one window, with the restore of the workers | Built. Real windows ran on Qwen and on Inkling on 2026-11-25 |
 | `prune-kit probe MODEL`: the window file of a probe, and its report | Built for Qwen3.5 and Qwen3.6 MoE, and for Inkling 2 with a loop. A probe of each one ran |
-| The gates `tasks`, `speed` and `memory`, and the verdict of a point in the report | Built. They ran in the gates window of 2026-11-25 |
-| `prune-kit judge`: the gate `judge`, with the blind page for your own review | Built. DeepSeek judged two cuts of the full Qwen on 2026-11-25 |
+| The gates `tasks`, `speed` and `memory`, and the verdict of a point in the report | Built. They ran in a gates window of Qwen and in a gates window of Inkling on 2026-11-25 |
+| `prune-kit judge`: the gate `judge`, with the blind page for your own review | Built. DeepSeek judged two cuts of the full Qwen and one cut of Inkling on 2026-11-25 |
 
 ## Scope
 
