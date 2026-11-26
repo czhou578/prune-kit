@@ -32,11 +32,49 @@ hand, and Inkling-2-Mini with no prune by hand. §6 of the plan has the results.
 | The gates `tasks`, `speed` and `memory`, and the verdict of a point in the report | Built. They ran in a gates window of Qwen and in a gates window of Inkling on 2026-11-25 |
 | `prune-kit judge`: the gate `judge`, with the blind page for your own review | Built. DeepSeek judged two cuts of the full Qwen and one cut of Inkling on 2026-11-25 |
 
+## Results
+
+These numbers are from real windows on one machine (2026-11-25), with coding sessions as the workflow. Each cut is
+compared with the full model of the same window. §6 of the plan has each table and its limits.
+
+| Model | Cut | Memory peak | `nll` (limit +3%) | `tasks` (of 85) | `judge` (30 blind pairs) | Verdict |
+|---|---|---|---|---|---|---|
+| Qwen3.6-35B-A3B | Full model | 30.9 GiB | Reference | 54 | Reference | |
+| | K 208 of 256 | 28.0 GiB | +5.04%: fail | 52: pass | No loss | fail (memory goal of 26.5 GiB) |
+| | K 192 of 256 | 26.4 GiB | +6.36%: fail | 52: pass | No loss | your decision |
+| Inkling-2-Mini | Full model | 43.7 GiB | Reference | 49 | Reference | |
+| | K 112 of 128 | 42.7 GiB | +2.14%: pass | 51: pass | No loss | pass |
+
+- A prune of the experts frees a small part of the memory. The +3% limit of `nll` holds a cut of about 12% to 15%
+  of the experts of these two models.
+- A cut can fail `nll` and still show no loss in `tasks` and `judge`. The report then says `your decision`.
+- prune-kit ran on two model types and on one machine. Each new model type needs a profile and a test.
+
 ## Scope
 
 - prune-kit prunes the routed experts of a mixture-of-experts (MoE) model. It does not prune a dense model.
 - It does not train, and it does not quantize.
 - It does not deploy. The switch of a live model server stays a step by hand.
+
+## Requirements
+
+- Linux, Python 3.11 or later, and [uv](https://docs.astral.sh/uv/).
+- The preflight needs only the files of a model: a folder, or a model in the local Hugging Face cache. It needs no
+  GPU and no server.
+- The capture, the gates and the probe need a vLLM server that returns the routed experts (vLLM 0.33, with the flag
+  `--enable-return-routed-experts`), and the memory for the full model.
+- The probe needs a profile for the model type. Qwen3.5 and Qwen3.6 MoE have one, and Inkling 2 with a loop has one.
+
+### What belongs to the machine of the author
+
+- The files in `examples/` describe one NVIDIA DGX Spark with 121 GiB of unified memory: its paths, its two live
+  workers and their hours. Write your own machine file and your own workflow file from them.
+- "The record" and "the prune by hand" are the two earlier prunes. They are in the public repo
+  [dsv4-specialize](https://github.com/czhou578/dsv4-specialize).
+- The gate `tasks` runs the tool-call suite of the public repo
+  [model-benchmarks](https://github.com/czhou578/model-benchmarks).
+- `model-gateway` and the command `job` are private tools of the author. The source kind `gateway_records` reads the
+  records of that gateway. `job` only shows a run on a page: each script also runs with no `job` command.
 
 ## Install
 
@@ -106,7 +144,8 @@ meets the minimums, and 1 when it does not. `--stats` reads the sessions that ex
 
 - `budget` is the largest count of calibration tokens that the source gives. Each project gives one segment in turn.
 - `map: hermes` renames the Claude Code tools to the Hermes tools, as the Qwen prune did.
-- The Hermes sessions of the stock bot come in as `sessions`: the bot repo has the export tool for them.
+- The sessions of another agent come in as `sessions`. Export them to the format of `sessions.jsonl` first: the
+  top of `src/prune_kit/sessions.py` describes the format.
 - A session of a project in `held_out.projects` is held out. Of the other sessions, a hash holds out `share`.
 
 The preflight also reads `sessions.jsonl` in the data folder of the workflow (`data.folder`, default
@@ -229,7 +268,7 @@ The rules of a window:
 - A start command that fails gets its second try after one minute.
 - Each command of the machine file and of the window file runs with bash.
 
-Start a real window in tmux under `job run`, with a `--desc` and a `--log`, so that it shows on the jobs page.
+A real window can run for two hours. Start it in tmux, and write its output to a log file.
 
 ### The probe
 
@@ -330,13 +369,18 @@ uv run pytest -q
 ```
 
 The tests use small synthetic files in temporary folders. They load no model, send no request, and stop no
-server. Some tests read files of this machine, and each of them is skipped where its files do not exist:
+server. Some tests read files of the machine of the author (the model checkpoints, and a clone of dsv4-specialize).
+Each of them is skipped where its files do not exist: a new clone gives 138 passed and 7 skipped.
 
 - `tests/test_gate_a.py` reads the headers of the real checkpoints and compares the preflight with the recorded
   numbers of the two prunes.
 - `tests/test_rank.py` compares the rank of the capture of the Qwen prune with the rank file of the record.
 - `tests/test_gate_c.py` compares the requests of the replay scorer with the requests of the scorer of the record.
 
-Two gates of the plan are scripts, because they are long runs. Start each one under `job run`, as its first lines
-show: `scripts/gate_b.sh` (about 19 GiB of disk for some minutes) and `scripts/gate_c.sh` (requests to the live Qwen
-for about 20 minutes).
+Two gates of the plan are scripts, because they are long runs: `scripts/gate_b.sh` (about 19 GiB of disk for some
+minutes) and `scripts/gate_c.sh` (requests to the live Qwen for about 20 minutes). Both need the files of the two
+prunes by hand. The first lines of each script show its start command.
+
+## License
+
+[MIT](LICENSE)
