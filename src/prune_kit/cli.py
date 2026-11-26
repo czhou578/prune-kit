@@ -162,7 +162,7 @@ def cmd_probe(a) -> int:
     try:
         flow, facts = workflow.load(a.workflow), inspect(resolve(a.model, a.hub))
         if a.report:
-            r = probe.report(facts, flow, a.run, a.rank)
+            r = probe.report(facts, flow, a.folder, a.rank)
             print(json.dumps(r, indent=2) if a.json else probe.text(r))
             return 0
         if not a.machine:
@@ -280,7 +280,7 @@ def parser() -> argparse.ArgumentParser:
     o.add_argument("--env", action="append", default=[], metavar="NAME=VALUE", help="one more variable for each server")
     o.add_argument("--report", action="store_true", help="print the result of the probe that ran; write no file")
     o.add_argument("--json", action="store_true", help="--report: print the result as JSON")
-    o.add_argument("--run", metavar="DIR", help="--report: the folder of the probe, if it is not at its first place")
+    o.add_argument("--folder", metavar="DIR", help="--report: the folder of the probe, if it moved")
     o.add_argument("--port", type=int, default=8890, help="the test port (default 8890); never a live port")
     o.add_argument("--tokens", type=int, default=400_000, help="the prompt tokens of the sample capture")
     o.add_argument("--turns", type=int, default=20, help="the held-out turns that each point scores")
