@@ -84,6 +84,8 @@ uv sync
 
 ## Use
 
+[docs/reference.md](docs/reference.md) holds the same text as this section, as the reference of the commands.
+
 ```bash
 uv run prune-kit stages
 ```
