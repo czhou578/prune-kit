@@ -6,6 +6,15 @@ One pipeline that prunes a local mixture-of-experts (MoE) model for one workflow
 > that your work uses least. A dense model has no such experts, so prune-moe-kit cannot prune it. The quick check tells
 > you in less than a second: it prints `NO-GO` for a dense model.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/img/probe-full-gate-dark.svg">
+  <img src="docs/img/probe-full-gate-light.svg" width="880"
+       alt="Chart: the loss of three cuts of Inkling-2-Mini against the full model. The probe of 41 minutes gives +0.72%, +2.01% and +3.75%. The full gate of 103 minutes gives +0.69%, +1.97% and +4.24%, each inside the band of the probe. The limit is +3%. The cut to 112 of 128 experts passes each gate.">
+</picture>
+
+The picture shows the results of one model on one machine. [Results](#results) has the numbers of both models, and
+`python3 scripts/figure.py` writes the picture again.
+
 ## In simple words
 
 - A local MoE model holds experts that your work almost never uses. A prune removes them, and the model needs less
