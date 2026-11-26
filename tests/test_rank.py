@@ -27,6 +27,16 @@ def test_rank_orders_each_layer_by_the_count():
     assert rank.removed(r, 2) == pytest.approx((6 / 21 + 3 / 14) / 2) and rank.removed(r, 4) == 0
 
 
+def test_the_rank_of_a_model_with_a_loop_folds_the_passes_of_a_layer():
+    # 4 layers, and the layers 1 and 2 run 2 times: the server gives the rows 0, 1, 2, 1, 2, 3
+    counts = [[1, 0], [2, 0], [0, 3], [0, 4], [5, 0], [0, 6]]
+    r = rank.rank([row("a", 0, counts, loop=[1, 3, 2])])
+    by_id = lambda layer: [e["count"] for e in sorted(r["layers"][layer], key=lambda e: e["id"])]
+    assert [by_id(layer) for layer in r["layers"]] == [[1, 0], [2, 4], [5, 3], [0, 6]]
+    with pytest.raises(rank.RankError, match="fewer than the 2 passes"):
+        rank.rank([row("a", 0, counts[:4], loop=[1, 3, 2])])
+
+
 def test_rank_refuses_a_capture_with_no_counts_or_with_mixed_shapes():
     with pytest.raises(rank.RankError, match="no segment with counts"):
         rank.rank([{"session": "b", "segment": 0, "error": "x"}])

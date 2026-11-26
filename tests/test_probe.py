@@ -47,6 +47,28 @@ def test_each_test_server_gets_the_flags_and_the_variables_of_the_command(qwen_l
     assert "--enable-return-routed-experts --speculative-config" in plan["points"][0]["boot"]
 
 
+def test_a_profile_with_a_container_gets_absolute_paths_its_mounts_and_a_down_command(qwen_like, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    facts, profile = inspect(qwen_like), probe.load_profile("inkling2_loop")
+    full, k3 = probe.plan(facts, flow(tmp_path, "[3]"), profile, {})["points"]
+    model, run = qwen_like.resolve(), (tmp_path / "runs" / qwen_like.name / "w/probe").resolve()
+    for point, served in ((full, model), (k3, run / "k3")):
+        assert point["down"] == "docker rm -f prune-kit-probe"
+        assert f" -v {model}:{model}:ro -v {run}:{run}:ro " in point["boot"]
+        assert f" {served} --host 127.0.0.1 --port 8890 --served-model-name probe " in point["boot"]
+        assert """--limit-mm-per-prompt '{"image": 0}'""" in point["boot"]
+    assert all(f"--served probe --profile {facts.model_type} " in c for c in full["clients"][1:3] + k3["clients"])
+
+
+def test_the_root_of_a_folder_with_links_holds_the_files_that_the_links_name(tmp_path):
+    (tmp_path / "repo/blobs").mkdir(parents=True)
+    (tmp_path / "repo/snapshots/a").mkdir(parents=True)
+    (tmp_path / "repo/blobs/x").write_text("x")
+    (tmp_path / "repo/snapshots/a/config.json").symlink_to("../../blobs/x")
+    assert probe.root(tmp_path / "repo/snapshots/a") == (tmp_path / "repo").resolve()
+    assert probe.root(tmp_path / "repo/blobs") == (tmp_path / "repo/blobs").resolve()
+
+
 def test_the_cuts_come_from_the_workflow_or_from_the_default(qwen_like, tmp_path):
     facts = inspect(qwen_like)   # 4 experts in each layer, 2 per token
     assert probe.cuts(flow(tmp_path), facts) == [3] and probe.cuts(flow(tmp_path, "[2, 3]"), facts) == [3, 2]

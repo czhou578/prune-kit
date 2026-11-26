@@ -99,9 +99,13 @@ def record(base, model, sessions, tools, n, out, max_tokens=800, from_data=False
     return _rows(out, todo, work)
 
 
-def score_tokens(toks, end_think) -> dict:
-    """The measures of the turn tokens ``[(token id, info)]``."""
+def score_tokens(toks, end_think, start_think=None, decision_tokens=1) -> dict:
+    """The measures of the turn tokens ``[(token id, info)]``. The reasoning ends after the first ``end_think``.
+    With ``start_think``, a turn has reasoning only when that token is one of its first two tokens. The decision is
+    right when each of the first ``decision_tokens`` tokens after the reasoning ranks first."""
     cut = next((k + 1 for k, (t, _) in enumerate(toks) if t == end_think), 0)
+    if start_think is not None and start_think not in [t for t, _ in toks[:2]]:
+        cut = 0
     text, offsets = "", []
     for _, info in toks:
         offsets.append(len(text))
@@ -113,15 +117,26 @@ def score_tokens(toks, end_think) -> dict:
         names.append(all(info["rank"] == 1 for info in inside))
     return {"tokens": len(toks), "nll": -sum(info["logprob"] for _, info in toks),
             "top1": sum(info["rank"] == 1 for _, info in toks), "reasoning_tokens": cut,
-            "decision_ok": cut < len(toks) and toks[cut][1]["rank"] == 1,
+            "decision_ok": cut + decision_tokens <= len(toks)
+                           and all(info["rank"] == 1 for _, info in toks[cut:cut + decision_tokens]),
             "tool_calls": len(names), "tool_names_ok": sum(names)}
 
 
-def score(base, model, sessions, tools, recorded, out, end_think="</think>") -> int:
-    """Score each recorded turn on the server. ``end_think`` is the text of the token that ends the reasoning."""
+def score(base, model, sessions, tools, recorded, out, end_think="</think>", start_think=None,
+          decision_tokens=1) -> int:
+    """Score each recorded turn on the server. ``end_think`` and ``start_think`` are the tokens that end and start
+    the reasoning (``score_tokens``): the text of a token, or its id for a server that does not read a special
+    token from a text."""
     by_id, tool_part = {s["id"]: s for s in sessions}, ({"tools": tools} if tools else {})
-    end = capture.post(base, "/tokenize", {"model": model, "prompt": end_think, "add_special_tokens": False})
-    end = end["tokens"][0]
+    def token(text):
+        if isinstance(text, int):
+            return text
+        ids = capture.post(base, "/tokenize", {"model": model, "prompt": text, "add_special_tokens": False})["tokens"]
+        if len(ids) != 1:
+            raise ValueError(f"{text} is {len(ids)} tokens on this server: the reasoning needs one token")
+        return ids[0]
+
+    end, start_id = token(end_think), token(start_think) if start_think else None
 
     def work(r):
         before = context(by_id[r["session"]], by_id[r["session"]]["segments"][r["segment"]], r["index"])
@@ -132,7 +147,8 @@ def score(base, model, sessions, tools, recorded, out, end_think="</think>") -> 
             "model": model, **tool_part, "max_tokens": 1, "temperature": 0, "prompt_logprobs": 0,
             "add_generation_prompt": False, "messages": [*before, turn]})
         own = reply["prompt_logprobs"][start:]   # one mapping for each token of the turn
-        return score_tokens([(int(t), info) for p in own if p for t, info in p.items()], end)
+        return score_tokens([(int(t), info) for p in own if p for t, info in p.items()], end, start_id,
+                            decision_tokens)
 
     return _rows(out, recorded, work)
 

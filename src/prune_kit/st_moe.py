@@ -179,8 +179,10 @@ def prune(source, out, rank: dict, k: int, draft: str = "rank") -> dict:
         write(out / f.name, f, items, head.get("__metadata__"))
         weight_map.update({item[0]: f.name for item in items})
         dropped += len(head) - ("__metadata__" in head) - len(items)
-    for f in source.iterdir():
-        if f.suffix != ".safetensors" and f.is_file() and f.name not in NOT_COPIED:
+    for f in source.iterdir():   # each other file, and each folder (the tokenizer files of some models)
+        if f.is_dir():
+            shutil.copytree(f, out / f.name)
+        elif f.suffix != ".safetensors" and f.is_file() and f.name not in NOT_COPIED:
             shutil.copy(f, out / f.name)
     (out / "config.json").write_text(json.dumps(config, indent=2) + "\n")
     index = source / NOT_COPIED[1]

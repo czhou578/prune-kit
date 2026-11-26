@@ -19,6 +19,41 @@ def test_score_tokens_finds_the_decision_and_the_tool_names():
     assert plain["decision_ok"] and plain["reasoning_tokens"] == 0 and plain["tool_calls"] == 0
 
 
+def test_score_tokens_with_a_start_token_and_a_decision_of_two_tokens():
+    think = [tok("<m>"), tok("<think>", tid=8), tok("x"), tok("<end>", tid=7), tok("<m>"), tok("<text>", rank=2),
+             tok("Yes"), tok("<end>", tid=7)]
+    s = replay.score_tokens(think, end_think=7, start_think=8, decision_tokens=2)
+    assert (s["reasoning_tokens"], s["decision_ok"]) == (4, False)
+    assert replay.score_tokens(think, 7, 8, decision_tokens=1)["decision_ok"]
+    plain = [tok("<m>"), tok("<text>"), tok("Yes"), tok("<end>", tid=7)]   # no reasoning: the end token ends the text
+    s = replay.score_tokens(plain, end_think=7, start_think=8, decision_tokens=2)
+    assert (s["reasoning_tokens"], s["decision_ok"]) == (0, True)
+    assert not replay.score_tokens(plain[:1], 7, 8, 2)["decision_ok"]      # too short for a decision
+
+
+def test_score_takes_the_id_of_a_token_and_refuses_a_text_of_many_tokens(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(capture, "post", lambda base, path, body: calls.append(path) or {"tokens": [1, 2]})
+    with pytest.raises(ValueError, match="is 2 tokens"):
+        replay.score("http://x", "m", [], None, [], tmp_path / "s.jsonl", end_think="<|end|>")
+    assert replay.score("http://x", "m", [], None, [], tmp_path / "s.jsonl", end_think=7, start_think=8) == 0
+    assert calls == ["/tokenize"]
+
+
+def test_the_gate_command_gives_the_replay_settings_of_a_profile(tmp_path, monkeypatch):
+    got = {}
+    monkeypatch.setattr(replay, "record", lambda *a, **k: got.update(record=k) or 0)
+    monkeypatch.setattr(replay, "score", lambda *a, **k: got.update(score=k) or 0)
+    (tmp_path / "sessions.jsonl").write_text("")
+    common = ["gate", "--data", str(tmp_path), "--base-url", "http://x", "--served", "m", "--out", str(tmp_path / "o"),
+              "--profile"]
+    assert cli.main([*common, "inkling2_loop", "--record", "--n", "2"]) == 0
+    assert cli.main([*common, "inkling2_loop", "--score", "--recorded", str(tmp_path / "sessions.jsonl")]) == 0
+    assert got["record"] == {"from_data": False, "sampling": {"temperature": 1.0}}
+    assert got["score"] == {"end_think": 200010, "start_think": 200008, "decision_tokens": 2}
+    assert cli.main([*common, "no_such_type", "--record"]) == 2
+
+
 def held(sid, project, turns, source="claude_code", pad=10):
     seg = [m for n in range(turns) for m in ({"role": "user", "content": f"q{n}" + "x" * pad},
                                              {"role": "assistant", "content": f"a{n}", "target": True})]

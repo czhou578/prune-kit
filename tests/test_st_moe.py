@@ -104,7 +104,10 @@ def test_the_stacked_layout_keeps_rows_and_a_tensor_with_one_value(tmp_path):
         "model.llm.layers.0.mlp.gate.weight": ((4, 2), rows(0, 1, 2, 3, width=2)),
         "model.llm.layers.0.mlp.gate.bias": ((4,), bytes([0, 1, 2, 3]))})
     (folder / "config.json").write_text(json.dumps({"text_config": {"n_routed_experts": 4}}))
+    (folder / "tiktoken").mkdir()
+    (folder / "tiktoken/tokenizer.model").write_text("the tokenizer of some models is in a folder")
     st_moe.prune(folder, tmp_path / "out", {"layers": {"0": [{"id": 3}, {"id": 0}, {"id": 2}, {"id": 1}]}}, 3)
+    assert (tmp_path / "out/tiktoken/tokenizer.model").read_text().startswith("the tokenizer")
     got = read(tmp_path / "out/model.safetensors")
     assert got["model.llm.layers.0.mlp.experts.w13_weight"] == ([3, 2], rows(0, 2, 3, width=2))
     assert got["model.llm.layers.0.mlp.experts.w13_weight_amax"] == ([3], bytes([0, 2, 3]))
