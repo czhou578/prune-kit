@@ -2,10 +2,16 @@
 name = "prune-kit"
 version = "0.1.0"
 description = "One pipeline that prunes a local model for one workflow."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.11"
 dependencies = [
     "pyyaml>=6",
 ]
+
+[project.urls]
+Repository = "https://github.com/czhou578/prune-kit"
 
 [project.scripts]
 prune-kit = "prune_kit.cli:main"

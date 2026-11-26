@@ -2,8 +2,7 @@
 
 Status: 2026-11-25. Stages I, II and III are built, and gates A, B, C and D pass (§7). The preflight gives the
 numbers of the two prunes by hand. Two models ran through the pipeline in real windows: Qwen against its prune by
-hand, and Inkling-2-Mini with no prune by hand (§6). Stages I
-and II are merged, and the last part of stage III is on a branch. The project name is a placeholder.
+hand, and Inkling-2-Mini with no prune by hand (§6). Each stage is merged into `main`.
 
 ## In simple words
 
