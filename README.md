@@ -12,9 +12,10 @@ One pipeline that prunes a local model for one workflow.
 
 ## Status
 
-Stages I and II of [the plan](plans/PLAN_PRUNE_KIT.md) are built: the blueprint, the quick check, and the shared
-stages. Stage III, the measurements, is in work: the probe, the gates and the judge are built, and three real windows
-ran on the full Qwen on 2026-11-25. Each gate ran in a real window. The third model is not started. §6 of the plan has the results.
+Stages I, II and III of [the plan](plans/PLAN_PRUNE_KIT.md) are built: the blueprint, the quick check, the shared
+stages, and the measurements. Each gate of the project passes. The preflight gives the numbers of the two prunes by
+hand (Qwen, DeepSeek). Two models ran through the pipeline in real windows on 2026-11-25: Qwen against its prune by
+hand, and Inkling-2-Mini with no prune by hand. §6 of the plan has the results.
 
 | Part | State |
 |---|---|
@@ -24,10 +25,10 @@ ran on the full Qwen on 2026-11-25. Each gate ran in a real window. The third mo
 | The workflow file, and `prune-kit preflight MODEL --workflow FILE` | Built |
 | `prune-kit data FILE`: the sessions of a workflow, the held-out split, the secret pass | Built |
 | `prune-kit capture MODEL` and `prune-kit rank CAPTURE`: the routed experts of the workflow, and their order | Built. The capture ran on a real capture server in the probe |
-| `prune-kit build MODEL`: the pruned folder, and its check against the source | Built for safetensors checkpoints. Not for EXL3 |
+| `prune-kit build MODEL`: the pruned folder, and its check against the source | Built for safetensors checkpoints. A server loaded pruned folders of Qwen (per-expert layout) and of Inkling (stacked layout). Not for EXL3 |
 | `prune-kit gate`: the replay gates `nll` and `tools`: record, score, compare | Built |
-| `prune-kit window`: test servers in one window, with the restore of the workers | Built. Three real windows ran on 2026-11-25 |
-| `prune-kit probe MODEL`: the window file of a probe, and its report | Built for the Qwen model type. One probe of the full Qwen ran |
+| `prune-kit window`: test servers in one window, with the restore of the workers | Built. Real windows ran on Qwen and on Inkling on 2026-11-25 |
+| `prune-kit probe MODEL`: the window file of a probe, and its report | Built for Qwen3.5 and Qwen3.6 MoE, and for Inkling 2 with a loop. A probe of each one ran |
 | The gates `tasks`, `speed` and `memory`, and the verdict of a point in the report | Built. They ran in the gates window of 2026-11-25 |
 | `prune-kit judge`: the gate `judge`, with the blind page for your own review | Built. DeepSeek judged two cuts of the full Qwen on 2026-11-25 |
 

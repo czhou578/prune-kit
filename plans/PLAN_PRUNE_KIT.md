@@ -1,8 +1,9 @@
 # Plan: prune-kit, one pipeline that prunes a local model for one workflow
 
-Status: 2026-11-25. Stages I and II are built and merged, and gates A, B and C pass (§7). Stage III is in work: the
-probe, the gates `tasks`, `speed` and `memory`, and the judge are built, and three real windows ran on the full Qwen
-(§6). Each gate ran in a real window. The third model and gate D are not started. The project name is a placeholder.
+Status: 2026-11-25. Stages I, II and III are built, and gates A, B, C and D pass (§7). The preflight gives the
+numbers of the two prunes by hand. Two models ran through the pipeline in real windows: Qwen against its prune by
+hand, and Inkling-2-Mini with no prune by hand (§6). Stages I
+and II are merged, and the last part of stage III is on a branch. The project name is a placeholder.
 
 ## In simple words
 
@@ -368,7 +369,7 @@ counts.
 | 13b | `prune-kit judge`: blind pairs, the sign test, the blind page | 249 | Built, and proven after the gates window |
 | 13c | The window runner: the stop of the whole server group, the cache release, a fast second try | 156 | Built, and proven in window 2 |
 | 13d | `prune-kit probe --flags` and `--env`: the draft model of a test server, for the gate `speed` | 43 | Built, and proven in the gates window |
-| 14 | The third model: its profile, the missing adapter parts, and gate D | | Not started |
+| 14 | The third model: the Inkling profile, a test server in a container, the loop fold of the rank, the replay settings of a profile, and gate D | 302 | Built, and proven in the Inkling window. Gate D passes |
 
 **The two real windows of 2026-11-25.** Both stopped Qwen and DeepSeek, because the full Qwen does not fit beside
 DeepSeek: its peak is 29 to 31 GiB, and about 32 GiB is free with Qwen down. The files are in
@@ -432,6 +433,53 @@ and it restored both workers at the first try. The files are in
   the 30 turns of the judge. The window stopped Qwen for 77 minutes and DeepSeek for 74 minutes. The judge on
   DeepSeek needed about 20 minutes for each cut, after the window.
 
+**The Inkling windows of 2026-11-25 (gate D).** Inkling-2-Mini had no prune by hand. Before the first window, the
+vLLM code in its server image and a CPU run of its renderer gave the facts for the adapter: the server gives one
+capture row for each pass of a looped layer (48 rows for 24 layers), it renders a chat with its own code and with
+no generation prompt, and it accepts all 154 segments of the coding data (4.14 million tokens for the calibration
+split). Four windows stopped Qwen and DeepSeek, because Inkling needs 45 GiB with its KV pin.
+
+| Window | Downtime | Result |
+|---|---|---|
+| 1 | 17:08 to 17:15 | No boot: the capture flag of this server needs the prefix cache, and the profile turned it off |
+| 2 | 17:16 to 17:25 | No boot: 128,000 tokens need a KV pin of 15.3 GiB, and the profile gave 12 GiB |
+| 3 | 17:25 to 17:55 | The full model ran each step. No cut loaded: the prune wrote the draft tensors into the weight index |
+| 4 | 17:56 to 20:26 | 8 points with no fault: the probe, then the full gate, with no restore between them |
+
+The runner restored both workers at the first try after each window. Window 4 is the files of two standard runs
+(`prune-kit probe`, and `prune-kit probe --tokens 100000000 --turns 60`), joined into one window file. The files are
+in `runs/thinkingmachines--Inkling-2-Mini/coding-record` (`probe-sample` and `probe`).
+
+| Cut | Freed | Probe: 450,383 tokens, 20 turns | Band (90%) of the probe | Full gate: 3,974,504 tokens, 60 turns | Gates of the full gate |
+|---|---|---|---|---|---|
+| K 120 | 0.91 GiB | +0.72% | +0.24% to +1.21% | +0.69% | `nll` and `tools` pass |
+| K 112 | 1.82 GiB | +2.01% | +1.14% to +3.29% | +1.97% | `nll` and `tools` pass |
+| K 104 | 2.74 GiB | +3.75% | +2.42% to +5.53% | +4.24% | `nll` fails, `tools` passes |
+
+- **Gate D passes.** Each value of the full gate is inside the band of the probe. The probe estimates K 108 as
+  the deepest cut that holds the `nll` gate, and the line of the full gate gives K 109. The full gate holds at K 112
+  and fails at K 104.
+- **The probe needed 41 minutes, and the full gate 103 minutes.** The probe gave the same answer in 40% of the
+  time. A boot needs 2.3 minutes, the capture runs at 4,000 tokens per second, a recorded turn needs 22 seconds,
+  and a scored turn needs 14 seconds.
+- **The sample rank is good here too.** It drops 84% of the experts that the full rank drops. At K 112 it removes
+  2.79% of the routing of the full capture, and the full rank removes 2.57%.
+- **The passes of a looped layer use different experts** (open point 3). The three passes share only 52% of their
+  drop lists. The rank of the sum is still near the best rank of each pass: at K 112 a pass loses 1.99% of its
+  routing with the rank of the sum, and 1.55% with its own rank. The worst pass loses 4.43%. The passes share the
+  weights, so one keep list must serve each pass.
+- **Inkling holds a cut as deep as Qwen** (open point 4). A token uses 6.25% of a layer of Inkling, and 3.1% of a
+  layer of Qwen. The line of Inkling is +0.84% NLL for each 1% of removed routing, and the line of Qwen is +1.13%.
+  The +3% limit is at about 15% of the experts for Inkling (K 109 of 128), and at about 12% to 15% for Qwen (K 224
+  to K 217 of 256). So the share of a layer that one token uses does not predict the depth for these two models.
+- **The limits of this result.** 13 of the 60 turns stopped at the limit of 800 tokens, inside the reasoning: such
+  a turn has no decision to score. The gates `tasks`, `speed` and `judge` did not run on Inkling. The test server
+  had no draft model. The memory peak (45.7 GiB for the full model, 41.8 GiB for K 112) includes the KV pin of
+  17 GiB for 128,000 tokens.
+- **Four faults, and what they changed.** The profile keeps the prefix cache and has a KV pin of 17 GiB. The prune
+  keeps a draft file out of the weight index, as the source does, and it copies each sub-folder of the source (the
+  tokenizer of Inkling). The preflight now gives GO for the model type `inkling2_loop`.
+
 ## 7. The gates of the project
 
 | Gate | Test | Needs |
@@ -439,7 +487,7 @@ and it restored both workers at the first try. The files are in
 | A | The preflight gives the recorded numbers: Qwen K 208 frees 3.17 GiB; DeepSeek K 160 frees 21.27 GiB in 28,896 tensors, and the MD cut frees 4.29 GiB; Inkling gives the table of §5.4 | Files only. The tool gives 3.16 GiB for Qwen K 208, and the record rounds to 3.17 GiB |
 | B | `st_moe` builds K 208 from the full Qwen with `results/qwen-rank.json`. Each tensor is the same as in `data/qwen-k208`, the folder of the live server, byte for byte | **Pass, 2026-11-25** (`scripts/gate_b.sh`). The five weight files and the index are equal, byte for byte: 101,316 tensors, 18.84 GiB. `config.json` is equal without `quantization_config`: a later step of the prune by hand changed those keys for the 4-bit draft |
 | C | The new scorer sends the requests of the scorer of the record, byte for byte. On the live Qwen, its NLL of `results/qwen-recorded.jsonl` is equal to `results/qwen-fit-g208-score.jsonl` inside the noise of two runs | **Pass, 2026-11-25** (`tests/test_gate_c.py`, `scripts/gate_c.sh`). The 121 requests are equal. The token counts of the 60 turns are equal. NLL per token: record 0.3274; old scorer today 0.3282; new scorer 0.3303 and 0.3283 in two runs. Two runs of the same scorer differ by 0.62%. The first limit of this gate was 0.2%: that limit was below the noise, so I changed the gate |
-| D | A third model runs from the preflight to the report. The probe estimate and the full gate agree within the band of the probe | Not run. A first check with a known answer passes: for the full Qwen, the full gate of the record is inside the band of the probe at K 208 and at K 192 (§6) |
+| D | A third model runs from the preflight to the report. The probe estimate and the full gate agree within the band of the probe | **Pass, 2026-11-25** (§6). Inkling-2-Mini: the full gate gives +0.69%, +1.97% and +4.24% at K 120, K 112 and K 104, and each value is inside the band of the probe. The estimates are K 108 (probe) and K 109 (full gate). For the full Qwen, the full gate of the record is also inside the band of the probe at K 208 and at K 192 |
 
 Gate D is the test of the claim "each model". Inkling-2-Mini is a hard case: a different layout, a different
 server, and layers that run three times.
@@ -461,14 +509,15 @@ server, and layers that run three times.
 
 ## 9. Open points to check during the work
 
-1. Does the capture flag work with the model code of Inkling in its Docker image? The image knows the flag
-   `--enable-return-routed-experts` (its help text, 2026-11-25). A window must show that the model code fills it.
+1. Does the capture flag work with the model code of Inkling in its Docker image? **Yes** (2026-11-25): the model
+   code fills one row for each pass of a layer, with no unfilled row. The flag needs the prefix cache.
 2. Does `approximate_experts` of vLLM 0.33 load quantized experts? If it does, a different K in each layer needs no
    loader patch for the models of the shared MoE layer.
-3. For a layer that runs three times, is the rank better per pass or per layer?
+3. For a layer that runs three times, is the rank better per pass or per layer? **Per layer, as the sum of the
+   passes** (2026-11-25): the passes share the weights, and the rank of the sum costs each pass little (§6).
 4. Does the share of a layer that one token uses predict the depth? DeepSeek uses 2.8% (6 of 216), Qwen 3.1%
-   (8 of 256) and Inkling 6.25% (8 of 128). The record says that a small model loses more. Inkling is the third
-   data point.
+   (8 of 256) and Inkling 6.25% (8 of 128). The record says that a small model loses more. **No, for Inkling and
+   Qwen** (2026-11-25): Inkling holds a cut of about 15% of its experts, and Qwen about 12% to 15% (§6).
 5. Can a mask work with no copy of the checkpoint, as a setting of the server?
 6. When does `--endpoint` of `agent-eval` reach `main`? PR 13 needs it.
 
