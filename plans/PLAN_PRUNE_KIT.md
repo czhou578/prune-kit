@@ -1,8 +1,8 @@
 # Plan: prune-kit, one pipeline that prunes a local model for one workflow
 
 Status: 2026-11-25. Stages I and II are built and merged, and gates A, B and C pass (§7). Stage III is in work: the
-probe, the gates `tasks`, `speed` and `memory`, and the judge are built, and two real windows ran on the full Qwen
-(§6). The third model and gate D are not started. The project name is a placeholder.
+probe, the gates `tasks`, `speed` and `memory`, and the judge are built, and three real windows ran on the full Qwen
+(§6). Each gate ran in a real window. The third model and gate D are not started. The project name is a placeholder.
 
 ## In simple words
 
@@ -364,9 +364,10 @@ counts.
 |---|---|---|---|
 | 12 | `prune-kit probe`: the Qwen profile, the window file of a probe, a sample capture, the results of a window | 280 | Built |
 | 12b | The probe report: the cost of each cut, the band, the line. The runner uses bash | 236 | Built |
-| 13 | The gates `tasks`, `speed` and `memory`, the verdict of a point, the full gate with the probe commands | 287 | Built. No window ran these gates |
-| 13b | `prune-kit judge`: blind pairs, the sign test, the blind page | 249 | Built. No real judge run |
+| 13 | The gates `tasks`, `speed` and `memory`, the verdict of a point, the full gate with the probe commands | 287 | Built, and proven in the gates window |
+| 13b | `prune-kit judge`: blind pairs, the sign test, the blind page | 249 | Built, and proven after the gates window |
 | 13c | The window runner: the stop of the whole server group, the cache release, a fast second try | 156 | Built, and proven in window 2 |
+| 13d | `prune-kit probe --flags` and `--env`: the draft model of a test server, for the gate `speed` | 43 | Built, and proven in the gates window |
 | 14 | The third model: its profile, the missing adapter parts, and gate D | | Not started |
 
 **The two real windows of 2026-11-25.** Both stopped Qwen and DeepSeek, because the full Qwen does not fit beside
@@ -398,6 +399,38 @@ What the windows proved, and what they found:
   held 25 GiB. The runner now drops the cached pages of its folders before each boot and before the restore.
 - **Fault 3:** the stop command of Qwen was not valid in `sh`. The runner now uses bash. The first try of window 1
   failed safely for this reason, before DeepSeek stopped.
+
+**The gates window of 2026-11-25 (14:48 to 16:05).** One window ran each gate on the full Qwen, K 208 and K 192, with
+the rank of the record (`results/qwen-rank.json`, 3,516,708 tokens) and 30 held-out turns. The runner needed no help,
+and it restored both workers at the first try. The files are in
+`runs/unsloth--Qwen3.6-35B-A3B-NVFP4-Fast/qwen-gates/probe`.
+
+| Gate | Full model | K 208 | K 192 | The record |
+|---|---|---|---|---|
+| `nll` (limit +3%) | Reference | +5.04% (band +3.53% to +6.74%): fail | +6.36% (band +4.67% to +7.97%): fail | +4.15% and +8.04%, with 60 turns |
+| `tools` | Reference | Pass | Pass | |
+| `tasks` (85 tasks, at most 3 fewer) | 54 | 52: pass | 52: pass | 52, 50 and 51 |
+| `judge` (30 blind pairs, DeepSeek) | Reference | Better 10, worse 9, equal 11 (p = 1.00): no loss | Better 12, worse 10, equal 8 (p = 0.83): no loss | |
+| `speed` (no limit) | 110.2 tok/s | 104.4 tok/s | 113.2 tok/s | |
+| `memory` (goal 26.5 GiB) | 30.9 GiB | 28.0 GiB: fail | 26.4 GiB: pass | |
+| Verdict | | fail | your decision | |
+
+- **Proven:** the gates `tasks`, `speed`, `memory` and `judge`, the verdict of a point, the build from a given rank,
+  and a test server with a draft model.
+- **The verdict of the record holds.** Both cuts fail the gate `nll`, and the record is inside each band. The gates
+  `tasks`, `tools` and `judge` show no loss at K 208 and at K 192. The estimate of the line is K 217.
+- **The gate `speed` shows no change.** The three prompts of one point differ by up to 20%, and the points differ by
+  less. The gate needs more prompts before it can show a small change.
+- **The gate `memory` depends on the test server.** The servers of this window had the MTP draft model of the full
+  snapshot, with no 4-bit draft, and the larger KV pin of the live server. The full model used 30.9 GiB, and 28.9 to
+  29.2 GiB with no draft. So K 208 fails the goal here because of the draft model. A window that must decide the
+  gate `memory` needs the flags of the server that will run the cut.
+- **The draft model needs three things** on vLLM 0.33: the flag `--speculative-config`, the variable `PYTHONPATH`
+  with the MTP patch of the record (a cut has fewer experts than its draft), and the KV pin of the live server
+  (1,965,377,034 bytes). `prune-kit probe --flags` and `--env` give them to each test server.
+- **The time of a point.** Each point needed 24 minutes: 3 for the boot, 5 for the score, 9 for the 85 tasks, 6 for
+  the 30 turns of the judge. The window stopped Qwen for 77 minutes and DeepSeek for 74 minutes. The judge on
+  DeepSeek needed about 20 minutes for each cut, after the window.
 
 ## 7. The gates of the project
 
