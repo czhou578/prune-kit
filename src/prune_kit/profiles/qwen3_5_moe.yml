@@ -1,6 +1,10 @@
 # The adapter profile of Qwen3.5 and Qwen3.6 MoE checkpoints (plans/PLAN_PRUNE_KIT.md §5.3): how a test server of
 # this model type starts. The values are those of the Qwen prune by hand (spark-moe-specialize, scripts/qwen_fit.sh)
 # and of the live server of 2026-11-25. The test server has no draft model: the replay score does not need it.
+# The gate speed needs the draft model of the live server: give its flag and its variable to `prune-kit probe`, as
+#   --flags "--speculative-config '{\"method\":\"mtp\",\"model\":\"<the full model>\",\"num_speculative_tokens\":3}'"
+#   --env PYTHONPATH=<the folder of the MTP patch>   (a cut has fewer experts than its draft: vLLM 0.33 needs it)
+# With the draft model, the KV pin must be that of the live server: add --kv-cache-memory-bytes 1965377034 to --flags.
 model_type: qwen3_5_moe
 server: vllm 0.33
 env: {HF_HUB_OFFLINE: "1", VLLM_USE_FASTOKENS: "0", CUTE_DSL_ARCH: sm_121a}

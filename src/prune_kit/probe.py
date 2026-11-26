@@ -56,14 +56,15 @@ def folder(facts: Facts, workflow) -> Path:
 
 
 def plan(facts: Facts, workflow, profile: dict, machine: dict, port: int = 8890, tokens: int = 400_000,
-         turns: int = 20, ranked=None, more=()) -> dict:
+         turns: int = 20, ranked=None, more=(), more_flags: str = "", more_env=None) -> dict:
     """The window file of the probe, as data. ``ranked``: a rank file of a full capture. The window then has no
     sample capture and builds each cut from that file. ``more``: the gates that each point also runs, of ``tasks``
     (the tool-call suite of model-benchmarks, from ``tools.model_benchmarks`` of the machine file), ``speed``, and
-    ``judge`` (each cut also records its own turns, for ``prune-kit judge`` after the window)."""
+    ``judge`` (each cut also records its own turns, for ``prune-kit judge`` after the window). ``more_flags`` and
+    ``more_env``: more flags and variables for each test server, for example those of a draft model."""
     run, url, flow = folder(facts, workflow), f"http://127.0.0.1:{port}", shlex.quote(str(workflow.path))
     kit = f"{shlex.quote(sys.executable)} -m prune_kit.cli"
-    env = [f"{k}={shlex.quote(str(v))}" for k, v in profile.get("env", {}).items()]
+    env = [f"{k}={shlex.quote(str(v))}" for k, v in {**profile.get("env", {}), **(more_env or {})}.items()]
     if machine.get("path"):
         env.append("PATH=" + ":".join([*machine["path"], "$PATH"]))
 
@@ -85,8 +86,9 @@ def plan(facts: Facts, workflow, profile: dict, machine: dict, port: int = 8890,
     def point(name: str, model, freed: int, flags: str, clients: list) -> dict:
         serve = profile["serve"].format(model=shlex.quote(str(model)), port=port, name=NAME)
         need = (facts.total_bytes - freed) / GIB + profile.get("overhead_gib", 0)
+        boot = " ".join(filter(None, ["env", *env, serve, flags, more_flags]))
         return {"name": name, "need_gib": round(need, 1), "health": f"{url}/health", "clients": clients + extra(name),
-                "boot": " ".join(["env", *env, serve, flags]).strip() + f" > {run}/server-{name}.log 2>&1"}
+                "boot": f"{boot} > {run}/server-{name}.log 2>&1"}
 
     ks = cuts(workflow, facts)
     score = lambda name: (f"{kit} gate --score --workflow {flow} --base-url {url} --served {NAME} "

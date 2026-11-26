@@ -13,8 +13,8 @@ One pipeline that prunes a local model for one workflow.
 ## Status
 
 Stages I and II of [the plan](plans/PLAN_PRUNE_KIT.md) are built: the blueprint, the quick check, and the shared
-stages. Stage III, the measurements, is in work: the probe, the gates and the judge are built, and two real windows
-ran on the full Qwen on 2026-11-25. The third model is not started. §6 of the plan has the results.
+stages. Stage III, the measurements, is in work: the probe, the gates and the judge are built, and three real windows
+ran on the full Qwen on 2026-11-25. Each gate ran in a real window. The third model is not started. §6 of the plan has the results.
 
 | Part | State |
 |---|---|
@@ -26,10 +26,10 @@ ran on the full Qwen on 2026-11-25. The third model is not started. §6 of the p
 | `prune-kit capture MODEL` and `prune-kit rank CAPTURE`: the routed experts of the workflow, and their order | Built. The capture ran on a real capture server in the probe |
 | `prune-kit build MODEL`: the pruned folder, and its check against the source | Built for safetensors checkpoints. Not for EXL3 |
 | `prune-kit gate`: the replay gates `nll` and `tools`: record, score, compare | Built |
-| `prune-kit window`: test servers in one window, with the restore of the workers | Built. Two real windows ran on 2026-11-25 |
+| `prune-kit window`: test servers in one window, with the restore of the workers | Built. Three real windows ran on 2026-11-25 |
 | `prune-kit probe MODEL`: the window file of a probe, and its report | Built for the Qwen model type. One probe of the full Qwen ran |
-| The gates `tasks`, `speed` and `memory`, and the verdict of a point in the report | Built. No window ran them yet |
-| `prune-kit judge`: the gate `judge`, with the blind page for your own review | Built. No real judge run yet |
+| The gates `tasks`, `speed` and `memory`, and the verdict of a point in the report | Built. They ran in the gates window of 2026-11-25 |
+| `prune-kit judge`: the gate `judge`, with the blind page for your own review | Built. DeepSeek judged two cuts of the full Qwen on 2026-11-25 |
 
 ## Scope
 
@@ -259,7 +259,9 @@ each point:
 - `tasks`: the tool-call suite of `model-benchmarks` (85 tasks). The machine file names its folder under
   `tools.model_benchmarks`. A point passes with at most 3 tasks fewer than the full model.
 - `speed`: `prune-kit gate --speed` measures the decode speed on three fixed prompts. The test server of the Qwen
-  profile has no draft model, so this speed is the speed with no draft.
+  profile has no draft model, so this speed is the speed with no draft. `--flags TEXT` and `--env NAME=VALUE` give
+  each test server more flags and variables, for example those of its draft model. The profile shows the values.
+  A draft model also uses memory: the gate `memory` then measures the test server with its draft.
 - `memory` needs no client. The results file of the window gives the peak of each point, and the report compares
   it with `memory.peak_gib` of the workflow.
 
