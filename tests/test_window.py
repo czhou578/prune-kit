@@ -159,10 +159,54 @@ def test_the_dry_run_of_the_command_prints_each_command_and_runs_none(capsys):
              "restore the worker qwen", "dry run: python3 -I", "RESTORE DONE: the worker qwen"]
     places = [out.index(text) for text in order]
     assert places == sorted(places) and out.count("dry run: prune-kit gate --score") == 2 and "deepseek" not in out
-    assert cli.main([*args, "--restore-at", "2099-01-05 04:50", "--stop", "deepseek"]) == 1   # a Monday morning
-    assert "the worker deepseek must be up mon 05:00 to 10:00" in capsys.readouterr().out
+    assert cli.main([*args, "--restore-at", "2099-01-04 01:10", "--stop", "deepseek"]) == 1   # the night-train job
+    assert "the worker deepseek must be up sun 00:30 to 01:00" in capsys.readouterr().out
     assert cli.main([*args, "--restore-at", "soon"]) == 2
     assert cli.main(["window", "none.yml", *args[2:], "--restore-at", "2099-01-04 03:00"]) == 2
+
+
+def test_a_stop_of_the_runner_stops_the_client_and_the_server_and_restores(tmp_path):
+    fake = Fake(client_s=600)
+    sleep = fake.sleep
+
+    def stopped(seconds):   # the stop comes in the first client, after 2 minutes
+        sleep(seconds)
+        if fake.clock >= at(2) and "start-ds" not in fake.log and not fake.log[-1].startswith("kill"):
+            raise KeyboardInterrupt
+
+    fake.sleep = stopped
+    points = [dict(POINTS[0], results=str(tmp_path / "a.json")), dict(POINTS[1], results=str(tmp_path / "b.json"))]
+    lines = []
+    w = window.Window(MACHINE, ["deepseek"], at(-1), at(120), at(240), fake, lines.append, tmp_path / "all.json")
+    assert w.run(points) == 1
+    assert fake.log == ["stop-ds", "serve-full", "capture", "kill capture", "kill serve-full", "down-full", "start-ds"]
+    assert "failure: KeyboardInterrupt: the safe action, the restore" in lines[-3] and fake.up >= {"ds/health"}
+    assert not (tmp_path / "a.json").exists() and '"restored": true' in (tmp_path / "all.json").read_text()
+
+
+def test_each_point_can_name_its_results_file(tmp_path):
+    import json
+    points = [dict(POINTS[0], results=str(tmp_path / "a.json")), dict(POINTS[1], results=str(tmp_path / "b.json"))]
+    w = window.Window(MACHINE, ["deepseek"], at(-1), at(120), at(240), Fake(), lambda _: None, tmp_path / "all.json")
+    assert w.run(points) == 0
+    names = lambda file: [p["name"] for p in json.loads((tmp_path / file).read_text())["points"]]
+    assert (names("a.json"), names("b.json"), names("all.json")) == (["full"], ["k208"], ["full", "k208"])
+
+
+def test_a_signal_becomes_a_failure_of_the_window_and_a_second_signal_has_no_effect():
+    import os
+    import signal
+    before = {sig: signal.getsignal(sig) for sig in window.STOPS}
+    try:
+        window.on_stop()
+        with pytest.raises(window.WindowError, match="the runner got SIGTERM"):
+            os.kill(os.getpid(), signal.SIGTERM)
+            signal.pause()
+        os.kill(os.getpid(), signal.SIGINT)   # ignored: the restore must end
+        assert all(signal.getsignal(sig) is signal.SIG_IGN for sig in window.STOPS)
+    finally:
+        for sig, handler in before.items():
+            signal.signal(sig, handler)
 
 
 def test_the_real_system_runs_bash_and_stops_the_whole_process_group(tmp_path):

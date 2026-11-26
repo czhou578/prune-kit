@@ -12,6 +12,8 @@ The rules:
 - A boot that is not healthy in 15 minutes goes down. After two failed boots in a row, the window ends.
 - A watch reads the available memory and the free swap during each client. Below a limit, it stops the client.
 - The window ends with the restore of each stopped worker: on success, on each failure, and at ``restore_at``.
+- A stop of the runner (Ctrl-C, ``kill``, the end of its terminal) is a failure of the window: the runner stops its
+  test server and its client, and it restores the workers. ``kill -9`` gives the runner no time: do not use it.
 """
 
 import json
@@ -29,11 +31,24 @@ import yaml
 DAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 BOOT_S, IDLE_S, RESTORE_S, POLL_S = 900, 1800, 1200, 15
 SHELL = "/bin/bash"   # the commands of a machine file are bash: `kill -TERM -- -PID` is not valid in sh
+STOPS = (signal.SIGTERM, signal.SIGINT, signal.SIGHUP)
 BUSY = re.compile(r"^vllm:num_requests_(?:running|waiting)\{[^}]*\} (\S+)", re.M)
 
 
 class WindowError(Exception):
     """A fault of a file, or a safety failure of the window. The safe action is the restore."""
+
+
+def on_stop() -> None:
+    """Make a stop of the runner a ``WindowError`` in the code that runs. A second stop has no effect: the restore
+    must end."""
+    def stop(number, _frame):
+        for sig in STOPS:
+            signal.signal(sig, signal.SIG_IGN)
+        raise WindowError(f"the runner got {signal.Signals(number).name}")
+
+    for sig in STOPS:
+        signal.signal(sig, stop)
 
 
 def load(path, required: dict) -> dict:
@@ -240,7 +255,12 @@ class Window:
         self.log(f"boot {point['name']} ({self.sys.memory()[0]:.1f} GiB available)")
         process = self.sys.spawn(point["boot"])
         healthy = lambda: self.sys.get(point["health"]) is not None or self.sys.done(process) is not None
-        if self.wait(healthy, BOOT_S) and self.sys.get(point["health"]) is not None:
+        try:
+            good = self.wait(healthy, BOOT_S) and self.sys.get(point["health"]) is not None
+        except BaseException:   # a stop of the runner: the server must not stay
+            self.down(point, process)
+            raise
+        if good:
             return process
         self.log(f"{point['name']}: not healthy: down")
         self.down(point, process)
@@ -272,7 +292,11 @@ class Window:
                 low = f"{available:.1f} GiB available, {swap:.1f} GiB of swap free"
             return low or self.sys.done(process) is not None
 
-        self.wait(over)
+        try:
+            self.wait(over)
+        except BaseException:   # a stop of the runner: the client must not stay
+            self.sys.kill(process)
+            raise
         code = self.sys.done(process)
         if low or code is None:
             self.log(f"stop the client: {low or 'restore_at is here'}")
@@ -301,7 +325,7 @@ class Window:
 
     def run(self, points: list) -> int:
         """Exit code 0: each point ran. 1: a point failed or did not run. 3: the restore failed."""
-        code, fails = 0, 0
+        code, fails, files = 0, 0, {}
         try:
             self.check()
             self.sys.sleep(max(0.0, (self.start_after - self.sys.now()).total_seconds()))
@@ -324,10 +348,14 @@ class Window:
                 self.rows.append({"name": point["name"], "booted": bool(process), "clients": codes,
                                   "available_before_gib": round(before, 2),
                                   "available_lowest_gib": round(min(self.lowest, before), 2)})
-        except Exception as e:   # each failure ends with the safe action
-            self.log(f"failure: {e}: the safe action, the restore")
+                files.setdefault(point.get("results"), []).append(self.rows[-1])
+        except (Exception, KeyboardInterrupt) as e:   # each failure ends with the safe action
+            self.log(f"failure: {str(e) or type(e).__name__}: the safe action, the restore")
             code = 1
         restored = self.restore()
-        if self.results:   # the points that booted or failed, for the report of a probe
-            Path(self.results).write_text(json.dumps({"points": self.rows, "restored": restored}, indent=1))
+        # The points that booted or failed, for the report of a probe: the file of the window, and the file that a
+        # point names with its key ``results`` (one file for each run folder of a window with two runs).
+        for path, rows in {**files, self.results: self.rows}.items():
+            if path:
+                Path(path).write_text(json.dumps({"points": rows, "restored": restored}, indent=1))
         return code if restored else 3
