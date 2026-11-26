@@ -4,8 +4,8 @@ from pathlib import Path
 import pytest
 import yaml
 
-from prune_kit import capture, cli, probe, rank, window, workflow
-from prune_kit.facts import inspect
+from prune_moe_kit import capture, cli, probe, rank, window, workflow
+from prune_moe_kit.facts import inspect
 
 from test_capture import Server, data
 from test_window import MACHINE, Fake, at
@@ -28,7 +28,7 @@ def test_the_plan_has_the_full_model_with_its_capture_flag_and_one_point_for_eac
     assert f"serve {qwen_like} --host 127.0.0.1 --port 8999 --served-model-name probe" in full["boot"]
     assert "--enable-return-routed-experts" in full["boot"] and "--enable-return-routed-experts" not in k3["boot"]
     assert full["boot"].endswith(f"> {run}/server-full.log 2>&1") and f"serve {run}/k3 " in k3["boot"]
-    kinds = [c.split(" -m prune_kit.cli ")[1].split()[0:2] for c in full["clients"]]
+    kinds = [c.split(" -m prune_moe_kit.cli ")[1].split()[0:2] for c in full["clients"]]
     assert [k[0] for k in kinds] == ["capture", "gate", "gate", "rank", "build", "build"]
     assert "--tokens 5000" in full["clients"][0] and "--record" in full["clients"][1] and "--n 20" in full["clients"][1]
     assert f"--k 3 --draft keep --out {run}/k3" in full["clients"][4] and "--k 3 2" in full["clients"][3]
@@ -53,7 +53,7 @@ def test_a_profile_with_a_container_gets_absolute_paths_its_mounts_and_a_down_co
     full, k3 = probe.plan(facts, flow(tmp_path, "[3]"), profile, {})["points"]
     model, run = qwen_like.resolve(), (tmp_path / "runs" / qwen_like.name / "w/probe").resolve()
     for point, served in ((full, model), (k3, run / "k3")):
-        assert point["down"] == "docker rm -f prune-kit-probe"
+        assert point["down"] == "docker rm -f prune-moe-kit-probe"
         assert f" -v {model}:{model}:ro -v {run}:{run}:ro " in point["boot"]
         assert f" {served} --host 127.0.0.1 --port 8890 --served-model-name probe " in point["boot"]
         assert """--limit-mm-per-prompt '{"image": 0}'""" in point["boot"]
@@ -92,7 +92,7 @@ def test_the_probe_command_writes_a_window_file_that_the_dry_run_accepts(qwen_li
     times = ["--start-after", "2099-01-03 22:00", "--boot-by", "2099-01-04 01:00", "--restore-at", "2099-01-04 03:00"]
     assert cli.main(["window", str(path), "--machine", str(machine), "--stop", "qwen", "--dry-run",
                      "--results", "r.json", *times]) == 0
-    assert "prune_kit.cli build" in capsys.readouterr().out and not Path("r.json").exists()
+    assert "prune_moe_kit.cli build" in capsys.readouterr().out and not Path("r.json").exists()
     (path.parent / "capture.jsonl").write_text("")
     assert cli.main(args) == 2 and "holds the files of an earlier run (capture.jsonl)" in capsys.readouterr().err
 
@@ -218,7 +218,7 @@ def test_a_probe_with_no_reference_or_with_no_cut(qwen_like, tmp_path, monkeypat
 
 @pytest.mark.skipif(not (RECORD / "qwen-fit-g208-score.jsonl").exists(), reason="the record is not on this machine")
 def test_the_report_of_the_recorded_gate_files_gives_the_numbers_of_the_record(tmp_path):
-    from prune_kit.resolve import ModelNotFound, resolve
+    from prune_moe_kit.resolve import ModelNotFound, resolve
     try:
         facts = inspect(resolve("unsloth/Qwen3.6-35B-A3B-NVFP4-Fast", []))
     except ModelNotFound:

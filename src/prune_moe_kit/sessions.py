@@ -1,4 +1,4 @@
-"""The data format of a workflow (plans/PLAN_PRUNE_KIT.md §5.2): ``sessions.jsonl``, the split and the secret pass.
+"""The data format of a workflow (plans/PLAN_PRUNE_MOE_KIT.md §5.2): ``sessions.jsonl``, the split and the secret pass.
 
 The format is that of the record (spark-moe-specialize), so the data of the two prunes loads unchanged. One line is
 one session::

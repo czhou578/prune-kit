@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from prune_kit import capture, cli, replay, sessions
+from prune_moe_kit import capture, cli, replay, sessions
 
 
 def tok(text, rank=1, logprob=-0.5, tid=1):

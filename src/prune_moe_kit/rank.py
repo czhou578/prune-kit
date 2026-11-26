@@ -1,7 +1,7 @@
-"""The rank (plans/PLAN_PRUNE_KIT.md §4, stage 3): the experts of each layer, ordered by their use in a capture.
+"""The rank (plans/PLAN_PRUNE_MOE_KIT.md §4, stage 3): the experts of each layer, ordered by their use in a capture.
 
 ``rank`` sums the rows of ``capture.py`` into a rank file: for each layer, each expert with its count and its share
-of the routing, the most used first. ``prune-kit build`` keeps the first K experts of each layer of this file.
+of the routing, the most used first. ``prune-moe-kit build`` keeps the first K experts of each layer of this file.
 ``overlap`` ranks two halves of the capture apart and compares their drop lists: a low overlap shows that the
 capture is too small for a stable rank.
 """

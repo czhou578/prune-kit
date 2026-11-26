@@ -4,7 +4,7 @@ import struct
 
 import pytest
 
-from prune_kit import capture, sessions
+from prune_moe_kit import capture, sessions
 
 
 def npy(rows, descr="<i4", code="i"):

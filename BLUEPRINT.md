@@ -1,7 +1,7 @@
 # The blueprint of a prune
 
 This page is the method of the two prunes of `spark-moe-specialize` (DeepSeek V4 Flash and Qwen3.6-35B-A3B), as one
-checklist. Use it for a prune by hand, or to read what a prune-kit command does. `prune-kit stages` shows which
+checklist. Use it for a prune by hand, or to read what a prune-moe-kit command does. `prune-moe-kit stages` shows which
 stages have a command.
 
 ## In simple words

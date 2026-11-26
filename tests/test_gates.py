@@ -2,8 +2,8 @@ import json
 
 import pytest
 
-from prune_kit import cli, gates, probe
-from prune_kit.facts import inspect
+from prune_moe_kit import cli, gates, probe
+from prune_moe_kit.facts import inspect
 
 from test_probe import flow, ran
 
@@ -77,7 +77,7 @@ def test_a_plan_with_a_rank_file_and_more_gates(qwen_like, tmp_path):
     machine = {"tools": {"model_benchmarks": {"dir": "/opt/mb", "python": "/opt/py"}}}
     plan = probe.plan(facts, w, profile, machine, turns=60, ranked="full-rank.json", more=("tasks", "speed"))
     full, k3 = plan["points"]
-    kinds = [c.split()[3] if "prune_kit.cli" in c else "suite" for c in full["clients"]]
+    kinds = [c.split()[3] if "prune_moe_kit.cli" in c else "suite" for c in full["clients"]]
     assert kinds == ["gate", "gate", "build", "suite", "gate"] and "--enable-return-routed-experts" not in full["boot"]
     assert "--rank full-rank.json --k 3" in full["clients"][2] and "--n 60" in full["clients"][0]
     suite = "cd /opt/mb && /opt/py -m benchmarks.tool_calling --base-url http://127.0.0.1:8890/v1"

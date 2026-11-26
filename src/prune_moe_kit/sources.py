@@ -1,4 +1,4 @@
-"""The data sources of a workflow (plans/PLAN_PRUNE_KIT.md §5.2). Each source gives sessions in the format of
+"""The data sources of a workflow (plans/PLAN_PRUNE_MOE_KIT.md §5.2). Each source gives sessions in the format of
 ``sessions.py``. ``build`` reads each source of a workflow file and writes ``sessions.jsonl``.
 
 - ``claude_code``: the Claude Code transcripts of ``~/.claude/projects``, one session per transcript.

@@ -1,9 +1,9 @@
-"""The probe, level 1 (plans/PLAN_PRUNE_KIT.md §5.5): two or three measured points in one window.
+"""The probe, level 1 (plans/PLAN_PRUNE_MOE_KIT.md §5.5): two or three measured points in one window.
 
 ``report`` reads the files of a probe that ran: the cost of each cut, a band for that cost, and an estimate of the
 deepest cut that holds the ``nll`` gate.
 
-``plan`` writes the window file of a probe. ``prune-kit window`` runs that file, and it is the only command that
+``plan`` writes the window file of a probe. ``prune-moe-kit window`` runs that file, and it is the only command that
 stops a worker. The window has one point for the full model and one point for each cut:
 
 1. The full model boots with its capture flag. The clients capture a sample of the calibration split, record some
@@ -40,7 +40,7 @@ def load_profile(model_type: str) -> dict:
     path = PROFILES / f"{model_type}.yml"
     if not path.exists():
         known = ", ".join(sorted(p.stem for p in PROFILES.glob("*.yml")))
-        raise ProbeError(f"no profile for the model type {model_type}: prune-kit has profiles for {known}")
+        raise ProbeError(f"no profile for the model type {model_type}: prune-moe-kit has profiles for {known}")
     return yaml.safe_load(path.read_text())
 
 
@@ -53,7 +53,7 @@ def cuts(workflow, facts: Facts) -> list[int]:
 
 
 def folder(facts: Facts, workflow, name: str = "probe") -> Path:
-    """The run folder: ``probe`` for a probe, ``full`` for the full gate of ``prune-kit probe --full``."""
+    """The run folder: ``probe`` for a probe, ``full`` for the full gate of ``prune-moe-kit probe --full``."""
     return Path("runs") / slug(facts.folder) / workflow.name / name
 
 
@@ -69,7 +69,7 @@ def plan(facts: Facts, workflow, profile: dict, machine: dict, port: int = 8890,
     """The window file of the probe, as data. ``ranked``: a rank file of a full capture. The window then has no
     sample capture and builds each cut from that file. ``more``: the gates that each point also runs, of ``tasks``
     (the tool-call suite of model-benchmarks, from ``tools.model_benchmarks`` of the machine file), ``speed``, and
-    ``judge`` (each cut also records its own turns, for ``prune-kit judge`` after the window). ``more_flags`` and
+    ``judge`` (each cut also records its own turns, for ``prune-moe-kit judge`` after the window). ``more_flags`` and
     ``more_env``: more flags and variables for each test server, for example those of a draft model.
 
     A profile whose ``serve`` has ``{mounts}`` starts its server in a container: the model paths are absolute, and
@@ -80,7 +80,7 @@ def plan(facts: Facts, workflow, profile: dict, machine: dict, port: int = 8890,
     ``tokens=None``: the capture is the whole calibration split. ``name``: the run folder (``folder``). Each point
     names the results file of its run folder, so two plans can be one window."""
     run, url, flow = folder(facts, workflow, name), f"http://127.0.0.1:{port}", shlex.quote(str(workflow.path))
-    kit = f"{shlex.quote(sys.executable)} -m prune_kit.cli"
+    kit = f"{shlex.quote(sys.executable)} -m prune_moe_kit.cli"
     env = [f"{k}={shlex.quote(str(v))}" for k, v in {**profile.get("env", {}), **(more_env or {})}.items()]
     if machine.get("path"):
         env.append("PATH=" + ":".join([*machine["path"], "$PATH"]))
@@ -139,7 +139,7 @@ def write(facts: Facts, workflow, window: dict, names=("probe",)) -> Path:
             raise ProbeError(f"{run} holds the files of an earlier run ({', '.join(sorted(old)[:4])}): move the folder")
         run.mkdir(parents=True, exist_ok=True)
     path = folder(facts, workflow, names[0]) / "window.yml"
-    path.write_text("# The window file of a probe, from `prune-kit probe`. Run it with `prune-kit window`.\n"
+    path.write_text("# The window file of a probe, from `prune-moe-kit probe`. Run it with `prune-moe-kit window`.\n"
                     + yaml.safe_dump(window, sort_keys=False, width=10_000))
     return path
 

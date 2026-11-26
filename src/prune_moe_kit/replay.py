@@ -1,4 +1,4 @@
-"""The replay gate (plans/PLAN_PRUNE_KIT.md §5.6, the gates ``nll`` and ``tools``): record, score, compare.
+"""The replay gate (plans/PLAN_PRUNE_MOE_KIT.md §5.6, the gates ``nll`` and ``tools``): record, score, compare.
 
 - ``record``: the full model writes one turn for each of N held-out targets. The context is the segment up to the
   target. The seed of each turn is fixed, so a second run records the same sample.

@@ -1,4 +1,4 @@
-"""The capture client (plans/PLAN_PRUNE_KIT.md §4, stage 2): count the routed experts of the calibration sessions.
+"""The capture client (plans/PLAN_PRUNE_MOE_KIT.md §4, stage 2): count the routed experts of the calibration sessions.
 
 The server must return the routed experts. On vLLM 0.33 that is the flag ``--enable-return-routed-experts``. For
 each segment of the calibration split, one ``/v1/chat/completions`` request sends the context and the last target

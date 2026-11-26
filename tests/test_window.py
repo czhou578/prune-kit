@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from prune_kit import cli, window
+from prune_moe_kit import cli, window
 
 T0 = datetime(2026, 11, 28, 22, 0)   # a Saturday
 at = lambda minutes: T0 + timedelta(minutes=minutes)
@@ -155,10 +155,10 @@ def test_the_dry_run_of_the_command_prints_each_command_and_runs_none(capsys):
     assert cli.main([*args, "--restore-at", "2099-01-04 03:00", "--stop", "qwen"]) == 0
     out = capsys.readouterr().out
     order = ["stop the worker qwen", "dry run: p=$(cat", "boot full", "dry run: vllm serve unsloth/",
-             "dry run: prune-kit gate --record", "boot k208", "dry run: vllm serve runs/qwen-k208",
+             "dry run: prune-moe-kit gate --record", "boot k208", "dry run: vllm serve runs/qwen-k208",
              "restore the worker qwen", "dry run: python3 -I", "RESTORE DONE: the worker qwen"]
     places = [out.index(text) for text in order]
-    assert places == sorted(places) and out.count("dry run: prune-kit gate --score") == 2 and "deepseek" not in out
+    assert places == sorted(places) and out.count("dry run: prune-moe-kit gate --score") == 2 and "deepseek" not in out
     assert cli.main([*args, "--restore-at", "2099-01-04 01:10", "--stop", "deepseek"]) == 1   # the night-train job
     assert "the worker deepseek must be up sun 00:30 to 01:00" in capsys.readouterr().out
     assert cli.main([*args, "--restore-at", "soon"]) == 2

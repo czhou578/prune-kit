@@ -1,6 +1,6 @@
-"""The gate ``judge`` (plans/PLAN_PRUNE_KIT.md §5.6): a blind judge on pairs of answers, and a blind page for you.
+"""The gate ``judge`` (plans/PLAN_PRUNE_MOE_KIT.md §5.6): a blind judge on pairs of answers, and a blind page for you.
 
-The full model and a pruned point each write one turn for the same held-out targets (``prune-kit gate --record``,
+The full model and a pruned point each write one turn for the same held-out targets (``prune-moe-kit gate --record``,
 with the same seeds). A judge model reads the request and the two answers under the names A and B, in an order that
 a hash of the turn fixes, and says which answer is better. A sign test compares the wins of the two models. The gate
 finds a loss only when the point loses more often than it wins and the test shows it (p below 0.05): a judge result

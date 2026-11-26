@@ -1,4 +1,4 @@
-"""The preflight, level 0 (plans/PLAN_PRUNE_KIT.md §5.4): what each cut frees, and whether the pipeline can run.
+"""The preflight, level 0 (plans/PLAN_PRUNE_MOE_KIT.md §5.4): what each cut frees, and whether the pipeline can run.
 
 It uses the facts of the files only. It loads no weights, and it gives no estimate of the depth that a model
 tolerates: only a measurement gives that.
@@ -19,7 +19,7 @@ BY_HAND = {
                     "capture": "the server patch of image-patch/ with Model Runner V1"},
 }
 PROVEN = {"qwen3_5_moe"}   # st_moe gives the folder of the prune by hand for these model types (gate B)
-# The model types that ran through prune-kit with no prune by hand (gate D): what a real window proved.
+# The model types that ran through prune-moe-kit with no prune by hand (gate D): what a real window proved.
 BY_KIT = {
     "inkling2_loop": {"prune": "a server loaded K 120, K 112 and K 104 of Inkling-2-Mini (2026-11-25)",
                       "capture": "the flag --enable-return-routed-experts of its vLLM image: one row for each pass"},
@@ -58,15 +58,16 @@ def available_bytes() -> int | None:
 
 
 def prune_tool(f: Facts, hand: str) -> Check:
-    """Can ``prune-kit build`` (st_moe) write the pruned folder of this model?"""
+    """Can ``prune-moe-kit build`` (st_moe) write the pruned folder of this model?"""
     if f.hash_layers or f.unread_files:
         why = "the token tables of the hash layers" if f.hash_layers else "weight files with no read permission"
-        return Check("prune tool", "no", f"prune-kit build does not handle {why}{hand}")
+        return Check("prune tool", "no", f"prune-moe-kit build does not handle {why}{hand}")
     if f.model_type in PROVEN:
-        return Check("prune tool", "yes", "prune-kit build: it gives the folder of the prune by hand, byte for byte")
+        return Check("prune tool", "yes",
+                     "prune-moe-kit build: it gives the folder of the prune by hand, byte for byte")
     if f.model_type in BY_KIT:
-        return Check("prune tool", "yes", f"prune-kit build: {BY_KIT[f.model_type]['prune']}")
-    return Check("prune tool", "unknown", f"prune-kit build copies the {f.layout} layout, "
+        return Check("prune tool", "yes", f"prune-moe-kit build: {BY_KIT[f.model_type]['prune']}")
+    return Check("prune tool", "unknown", f"prune-moe-kit build copies the {f.layout} layout, "
                                           "but no server has loaded such a copy of this model type")
 
 

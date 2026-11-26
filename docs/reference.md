@@ -1,35 +1,35 @@
-# prune-kit: the reference of the commands
+# prune-moe-kit: the reference of the commands
 
-This page describes each command of prune-kit in the order of the pipeline. [The README](../README.md) has the
-short view, and [the plan](../plans/PLAN_PRUNE_KIT.md) has the design and the results.
+This page describes each command of prune-moe-kit in the order of the pipeline. [The README](../README.md) has the
+short view, and [the plan](../plans/PLAN_PRUNE_MOE_KIT.md) has the design and the results.
 
-prune-kit prunes the routed experts of a mixture-of-experts (MoE) model. It cannot prune a dense model.
+prune-moe-kit prunes the routed experts of a mixture-of-experts (MoE) model. It cannot prune a dense model.
 
 ## The state of each part
 
 | Part | State |
 |---|---|
 | [BLUEPRINT.md](../BLUEPRINT.md): the stages, the gates and the rules of a prune | Written |
-| `prune-kit stages`: the stages, and the command of each stage | Built |
-| `prune-kit preflight MODEL`: the quick check, from the model files only | Built for safetensors checkpoints, EXL3 included |
-| The workflow file, and `prune-kit preflight MODEL --workflow FILE` | Built |
-| `prune-kit data FILE`: the sessions of a workflow, the held-out split, the secret pass | Built |
-| `prune-kit capture MODEL` and `prune-kit rank CAPTURE`: the routed experts of the workflow, and their order | Built. The capture ran on a real capture server in the probe |
-| `prune-kit build MODEL`: the pruned folder, and its check against the source | Built for safetensors checkpoints. A server loaded pruned folders of Qwen (per-expert layout) and of Inkling (stacked layout). Not for EXL3 |
-| `prune-kit gate`: the replay gates `nll` and `tools`: record, score, compare | Built |
-| `prune-kit window`: test servers in one window, with the restore of the workers | Built. Real windows ran on Qwen and on Inkling on 2026-11-25 |
-| `prune-kit probe MODEL`: the window file of a probe, and its report | Built for Qwen3.5 and Qwen3.6 MoE, and for Inkling 2 with a loop. A probe of each one ran |
+| `prune-moe-kit stages`: the stages, and the command of each stage | Built |
+| `prune-moe-kit preflight MODEL`: the quick check, from the model files only | Built for safetensors checkpoints, EXL3 included |
+| The workflow file, and `prune-moe-kit preflight MODEL --workflow FILE` | Built |
+| `prune-moe-kit data FILE`: the sessions of a workflow, the held-out split, the secret pass | Built |
+| `prune-moe-kit capture MODEL` and `prune-moe-kit rank CAPTURE`: the routed experts of the workflow, and their order | Built. The capture ran on a real capture server in the probe |
+| `prune-moe-kit build MODEL`: the pruned folder, and its check against the source | Built for safetensors checkpoints. A server loaded pruned folders of Qwen (per-expert layout) and of Inkling (stacked layout). Not for EXL3 |
+| `prune-moe-kit gate`: the replay gates `nll` and `tools`: record, score, compare | Built |
+| `prune-moe-kit window`: test servers in one window, with the restore of the workers | Built. Real windows ran on Qwen and on Inkling on 2026-11-25 |
+| `prune-moe-kit probe MODEL`: the window file of a probe, and its report | Built for Qwen3.5 and Qwen3.6 MoE, and for Inkling 2 with a loop. A probe of each one ran |
 | The gates `tasks`, `speed` and `memory`, and the verdict of a point in the report | Built. They ran in a gates window of Qwen and in a gates window of Inkling on 2026-11-25 |
-| `prune-kit judge`: the gate `judge`, with the blind page for your own review | Built. DeepSeek judged two cuts of the full Qwen and one cut of Inkling on 2026-11-25 |
+| `prune-moe-kit judge`: the gate `judge`, with the blind page for your own review | Built. DeepSeek judged two cuts of the full Qwen and one cut of Inkling on 2026-11-25 |
 
 ## The stages and the preflight
 
 ```bash
-uv run prune-kit stages
+uv run prune-moe-kit stages
 ```
 
 ```bash
-uv run prune-kit preflight thinkingmachines/Inkling-2-Mini
+uv run prune-moe-kit preflight thinkingmachines/Inkling-2-Mini
 ```
 
 `MODEL` is a folder, a Hugging Face name in a local cache, or a part of such a name. The preflight reads
@@ -58,7 +58,7 @@ One YAML file describes one workflow: its data sources, its memory goal, and the
 `name` and `data.sources` has a default. A file with a fault gives one error that lists each fault.
 
 ```bash
-uv run prune-kit preflight unsloth/Qwen3.6-35B-A3B-NVFP4-Fast --workflow examples/coding-fast-route.yml
+uv run prune-moe-kit preflight unsloth/Qwen3.6-35B-A3B-NVFP4-Fast --workflow examples/coding-fast-route.yml
 ```
 
 With a workflow file, the preflight adds the cut that reaches `memory.peak_gib`: the largest K that frees the need.
@@ -68,10 +68,10 @@ weights only, and the preflight says that the need is a lower limit.
 ## The data of a workflow
 
 ```bash
-uv run prune-kit data examples/coding-fast-route.yml
+uv run prune-moe-kit data examples/coding-fast-route.yml
 ```
 
-`prune-kit data FILE` reads each source of the workflow file and writes `sessions.jsonl` into the data folder. It
+`prune-moe-kit data FILE` reads each source of the workflow file and writes `sessions.jsonl` into the data folder. It
 prints the table of the sources, and it compares the totals with the minimums. The exit code is 0 when the data
 meets the minimums, and 1 when it does not. `--stats` reads the sessions that exist and builds nothing.
 
@@ -85,7 +85,7 @@ meets the minimums, and 1 when it does not. `--stats` reads the sessions that ex
 - `budget` is the largest count of calibration tokens that the source gives. Each project gives one segment in turn.
 - `map: hermes` renames the Claude Code tools to the Hermes tools, as the Qwen prune did.
 - The sessions of another agent come in as `sessions`. Export them to the format of `sessions.jsonl` first: the
-  top of `src/prune_kit/sessions.py` describes the format.
+  top of `src/prune_moe_kit/sessions.py` describes the format.
 - A session of a project in `held_out.projects` is held out. Of the other sessions, a hash holds out `share`.
 
 The preflight also reads `sessions.jsonl` in the data folder of the workflow (`data.folder`, default
@@ -104,7 +104,7 @@ minimum, the verdict lists `data` as work.
   worker for a capture without a plan for the window.
 
 ```bash
-uv run prune-kit capture unsloth/Qwen3.6-35B-A3B-NVFP4-Fast --workflow examples/coding-fast-route.yml --base-url http://127.0.0.1:8890
+uv run prune-moe-kit capture unsloth/Qwen3.6-35B-A3B-NVFP4-Fast --workflow examples/coding-fast-route.yml --base-url http://127.0.0.1:8890
 ```
 
 The capture sends each calibration segment of the workflow once. It writes one row of counts for each segment to
@@ -119,7 +119,7 @@ The capture sends each calibration segment of the workflow once. It writes one r
   each pass.
 
 ```bash
-uv run prune-kit rank runs/unsloth--Qwen3.6-35B-A3B-NVFP4-Fast/coding-fast-route/capture.jsonl
+uv run prune-moe-kit rank runs/unsloth--Qwen3.6-35B-A3B-NVFP4-Fast/coding-fast-route/capture.jsonl
 ```
 
 The rank orders the experts of each layer by their count, and it writes `rank.json` beside the capture. For each K,
@@ -130,10 +130,10 @@ The rank of the capture of the Qwen prune is equal to the rank file of the recor
 ## The pruned folder
 
 ```bash
-uv run prune-kit build unsloth/Qwen3.6-35B-A3B-NVFP4-Fast --rank rank.json --k 208 --out runs/qwen-k208
+uv run prune-moe-kit build unsloth/Qwen3.6-35B-A3B-NVFP4-Fast --rank rank.json --k 208 --out runs/qwen-k208
 ```
 
-`prune-kit build` writes a copy of the model with K experts in each layer. It keeps the first K experts of each
+`prune-moe-kit build` writes a copy of the model with K experts in each layer. It keeps the first K experts of each
 layer of the rank file, and it gives them the ids 0 to K-1. It copies bytes: it does no new quantization, and it
 never changes the full model. Then it compares each kept tensor with its source, byte for byte.
 
@@ -153,15 +153,15 @@ The replay gate has three steps. Each step is one command, and a second start co
 3. Compare: the totals of two score files, against the limits of the gates `nll` and `tools`.
 
 ```bash
-uv run prune-kit gate --record --workflow examples/coding-fast-route.yml --base-url http://127.0.0.1:8889 --out runs/recorded.jsonl
+uv run prune-moe-kit gate --record --workflow examples/coding-fast-route.yml --base-url http://127.0.0.1:8889 --out runs/recorded.jsonl
 ```
 
 ```bash
-uv run prune-kit gate --score --workflow examples/coding-fast-route.yml --base-url http://127.0.0.1:8889 --recorded runs/recorded.jsonl --out runs/score-k208.jsonl
+uv run prune-moe-kit gate --score --workflow examples/coding-fast-route.yml --base-url http://127.0.0.1:8889 --recorded runs/recorded.jsonl --out runs/score-k208.jsonl
 ```
 
 ```bash
-uv run prune-kit gate --compare runs/score-full.jsonl runs/score-k208.jsonl --workflow examples/coding-fast-route.yml
+uv run prune-moe-kit gate --compare runs/score-full.jsonl runs/score-k208.jsonl --workflow examples/coding-fast-route.yml
 ```
 
 - The exit code of `--compare` is 0 when each gate passes, and 1 when a gate fails.
@@ -174,7 +174,7 @@ uv run prune-kit gate --compare runs/score-full.jsonl runs/score-k208.jsonl --wo
 
 ## A window
 
-A window is a time in which test servers run in place of a live worker. `prune-kit window` runs the points of a
+A window is a time in which test servers run in place of a live worker. `prune-moe-kit window` runs the points of a
 window file, one test server after the other, and it restores the machine at the end.
 
 - CAUTION: A real window stops a live worker, and the worker gives no answers until the restore. Run each window
@@ -183,7 +183,7 @@ window file, one test server after the other, and it restores the machine at the
   [examples/machine-spark.yml](../examples/machine-spark.yml) against the machine before the first real window.
 
 ```bash
-uv run prune-kit window examples/window-qwen-score.yml --machine examples/machine-spark.yml --stop qwen --start-after "2026-11-28 22:00" --boot-by "2026-11-29 01:00" --restore-at "2026-11-29 03:00" --dry-run
+uv run prune-moe-kit window examples/window-qwen-score.yml --machine examples/machine-spark.yml --stop qwen --start-after "2026-11-28 22:00" --boot-by "2026-11-29 01:00" --restore-at "2026-11-29 03:00" --dry-run
 ```
 
 The rules of a window:
@@ -212,11 +212,11 @@ A real window can run for two hours. Start it in tmux, and write its output to a
 
 ## The probe
 
-The probe measures two or three cuts in one window, before a full capture. `prune-kit probe` only writes the window
+The probe measures two or three cuts in one window, before a full capture. `prune-moe-kit probe` only writes the window
 file. It starts no server and stops no worker.
 
 ```bash
-uv run prune-kit probe unsloth/Qwen3.6-35B-A3B-NVFP4-Fast --workflow examples/coding-fast-route.yml --machine examples/machine-spark.yml
+uv run prune-moe-kit probe unsloth/Qwen3.6-35B-A3B-NVFP4-Fast --workflow examples/coding-fast-route.yml --machine examples/machine-spark.yml
 ```
 
 - The window has one point for the full model and one point for each cut. The cuts are `points` of the workflow
@@ -224,7 +224,7 @@ uv run prune-kit probe unsloth/Qwen3.6-35B-A3B-NVFP4-Fast --workflow examples/co
 - The full model boots with its capture flag. Its clients capture a sample of 400,000 tokens, record 20 held-out
   turns, score them, rank the sample, and build the pruned folder of each cut.
 - Each cut boots, and one client scores the same 20 turns.
-- The serve command comes from the profile of the model type, in `src/prune_kit/profiles/`. A model type with no
+- The serve command comes from the profile of the model type, in `src/prune_moe_kit/profiles/`. A model type with no
   profile gets an error. Qwen3.5 and Qwen3.6 MoE have a profile, and Inkling 2 with a loop has one.
 - A profile can start its server in a container: its serve command then has `{mounts}`. The plan gives absolute
   paths, and the container gets the folder of the model and the run folder at the same paths. `down` of a profile
@@ -233,13 +233,13 @@ uv run prune-kit probe unsloth/Qwen3.6-35B-A3B-NVFP4-Fast --workflow examples/co
   the reasoning, the number of tokens of the decision, the sampling, and the limit of a recorded turn
   (`max_tokens`, 800 with no setting). The gate commands of the window then have `--profile TYPE`. The report
   counts the recorded turns that stopped at the limit: such a turn has no decision to score.
-- The command prints the `prune-kit window` command for the file. Run the dry run first.
+- The command prints the `prune-moe-kit window` command for the file. Run the dry run first.
 
 After the window, `--report` prints the result. It needs no machine file. `--folder DIR` reads a probe folder
 that moved.
 
 ```bash
-uv run prune-kit probe unsloth/Qwen3.6-35B-A3B-NVFP4-Fast --workflow examples/coding-fast-route.yml --report
+uv run prune-moe-kit probe unsloth/Qwen3.6-35B-A3B-NVFP4-Fast --workflow examples/coding-fast-route.yml --report
 ```
 
 - **The cost of each cut:** the NLL change against the full model of the same window, and the weights that the cut
@@ -263,7 +263,7 @@ each point:
 
 - `tasks`: the tool-call suite of `model-benchmarks` (85 tasks). The machine file names its folder under
   `tools.model_benchmarks`. A point passes with at most 3 tasks fewer than the full model.
-- `speed`: `prune-kit gate --speed` measures the decode speed on eight fixed prompts. One prompt differs from the
+- `speed`: `prune-moe-kit gate --speed` measures the decode speed on eight fixed prompts. One prompt differs from the
   next by 10% and more, so the report also shows the median change for the same prompts. The test server of the Qwen
   profile has no draft model, so this speed is the speed with no draft. `--flags TEXT` and `--env NAME=VALUE` give
   each test server more flags and variables, for example those of its draft model. The profile shows the values.
@@ -290,7 +290,7 @@ The judge compares the answers of the full model and of a pruned point to the sa
 model on a live server reads each pair:
 
 ```bash
-uv run prune-kit judge runs/recorded.jsonl runs/recorded-k208.jsonl --workflow examples/coding-fast-route.yml --base-url http://127.0.0.1:8888 --out runs/judge-k208.json --page runs/pairs-k208.html
+uv run prune-moe-kit judge runs/recorded.jsonl runs/recorded-k208.jsonl --workflow examples/coding-fast-route.yml --base-url http://127.0.0.1:8888 --out runs/judge-k208.json --page runs/pairs-k208.html
 ```
 
 - The judge sees the two answers as A and B. A hash of the turn fixes which model is A. The judge does not see the

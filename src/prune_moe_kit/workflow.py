@@ -1,4 +1,4 @@
-"""The workflow file (plans/PLAN_PRUNE_KIT.md §5.2): one YAML file that describes one workflow.
+"""The workflow file (plans/PLAN_PRUNE_MOE_KIT.md §5.2): one YAML file that describes one workflow.
 
 ``load`` reads the file, adds the defaults, and checks each value. It reports each fault of the file in one error,
 with the path of the key.

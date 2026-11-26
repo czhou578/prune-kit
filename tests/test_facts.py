@@ -1,7 +1,7 @@
 import pytest
 
-from prune_kit.facts import inspect
-from prune_kit.weights import WeightsError, tensors
+from prune_moe_kit.facts import inspect
+from prune_moe_kit.weights import WeightsError, tensors
 
 from conftest import write_st
 

@@ -1,4 +1,4 @@
-# The machine file of the DGX Spark of this project, for `prune-kit window --machine`.
+# The machine file of the DGX Spark of this project, for `prune-moe-kit window --machine`.
 # CAUTION: A wrong stop or start command leaves a live worker down. Check each command against the machine before
 # a real window, and run the window with --dry-run first.
 path: [/home/colin-spark/venvs/vllm033/bin]   # the folder of the server tools: a probe puts it first in PATH

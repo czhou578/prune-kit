@@ -9,11 +9,11 @@ MAX_HEADER = 512 << 20   # a larger header length means that the file is not a s
 
 
 class WeightsError(Exception):
-    """The folder has no weight file that prune-kit can read."""
+    """The folder has no weight file that prune-moe-kit can read."""
 
 
 class FormatError(WeightsError):
-    """The weights have a format that prune-kit cannot copy by bytes."""
+    """The weights have a format that prune-moe-kit cannot copy by bytes."""
 
 
 @dataclass(frozen=True)
@@ -59,7 +59,7 @@ def tensors(folder: Path) -> list[Tensor]:
     folder = Path(folder)
     files = sorted(folder.glob("*.safetensors"))
     if not files and any(folder.glob("*.gguf")):
-        raise FormatError(f"{folder}: GGUF files. prune-kit copies the bytes of safetensors files only")
+        raise FormatError(f"{folder}: GGUF files. prune-moe-kit copies the bytes of safetensors files only")
     if not files:
         raise WeightsError(f"{folder}: no safetensors file. The weights are not on disk, or they have another format")
     out, index = [], None

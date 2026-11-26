@@ -2,8 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from prune_kit import cli, preflight, workflow
-from prune_kit.facts import inspect
+from prune_moe_kit import cli, preflight, workflow
+from prune_moe_kit.facts import inspect
 
 EXAMPLE = Path(__file__).parent.parent / "examples/coding-fast-route.yml"
 

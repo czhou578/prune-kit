@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from prune_kit import preflight, sessions, workflow
-from prune_kit.facts import inspect
+from prune_moe_kit import preflight, sessions, workflow
+from prune_moe_kit.facts import inspect
 
 RECORD = Path.home() / "Projects/dsv4-specialize/data/qwen-data/sessions.jsonl"
 

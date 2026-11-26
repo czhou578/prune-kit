@@ -1,4 +1,4 @@
-# Plan: prune-kit, one pipeline that prunes a local model for one workflow
+# Plan: prune-moe-kit, one pipeline that prunes a local model for one workflow
 
 Status: 2026-11-25. Stages I, II and III are built, and gates A, B, C and D pass (§7). The preflight gives the
 numbers of the two prunes by hand. Two models ran through the pipeline in real windows: Qwen against its prune by
@@ -8,11 +8,11 @@ hand, and Inkling-2-Mini with no prune by hand (§6). Each stage is merged into 
 
 - You pruned two models by hand: DeepSeek V4 Flash and Qwen3.6-35B-A3B. Both prunes used the same steps: record
   which parts of the model your work uses, rank them, remove the cold parts, and test the result.
-- prune-kit makes those steps one tool. Then the next model needs no new project.
+- prune-moe-kit makes those steps one tool. Then the next model needs no new project.
 - First, a quick check reads the files of a model. In seconds, it tells you how much memory each cut frees, and
   whether the pipeline can run on this model.
 - Then a longer check loads the model once. It measures how deep the cut can go for your workflow.
-- prune-kit never changes a live worker, and it never decides for you. It ends with a pruned folder and a report.
+- prune-moe-kit never changes a live worker, and it never decides for you. It ends with a pruned folder and a report.
 
 ## 1. Verdict
 
@@ -51,7 +51,7 @@ calls that repo "the record".
 | vLLM overhead on Qwen | 6.2 to 7.7 GiB on top of the weights and the KV pin. No setting lowers it | `PLAN_QWEN_PRUNE.md` §7.4, §8 |
 | Time of a window | The Qwen capture (2.44M tokens, 99 segments) took 79 minutes of downtime. Gate window 1 took 33 minutes | `PLAN_QWEN_PRUNE.md` §6.1, §7.1 |
 | Stock DeepSeek checkpoint | On disk: 98.83 GiB in `~/Projects/DeepSeek-v4-Flash-One-DGX-Spark/data/tp1`. The layer files are `root:600` | `ls` |
-| Full Qwen checkpoint | On disk: 22.01 GiB of tensors. Its files are links into the shared blob folder of the Hugging Face cache, so `du` without `-L` shows 6.7 MB. `data/qwen-k208/PRUNE.json` names it as the source | `du -L`, `prune_kit.facts.inspect` |
+| Full Qwen checkpoint | On disk: 22.01 GiB of tensors. Its files are links into the shared blob folder of the Hugging Face cache, so `du` without `-L` shows 6.7 MB. `data/qwen-k208/PRUNE.json` names it as the source | `du -L`, `prune_moe_kit.facts.inspect` |
 | Qwen gate files | On disk: `results/qwen-recorded.jsonl` (the 60 recorded turns), `results/qwen-fit-g208-score.jsonl`, `results/qwen-rank.json` | `ls` |
 | Inkling-2-Mini | On disk, in the Hugging Face cache. 24 layers, and the middle 12 run three times. 128 experts per layer, 8 per token. The experts hold 14.59 GiB of 18.18 GiB (80%), 4.86 MiB per expert | `config.json`, the safetensors header |
 | Inkling-2-Mini, layout | One stacked tensor set per layer (`mlp.experts.w13_weight`, `w2_weight`, with scale tensors), in NVFP4 and MXFP8. The router has a bias (`mlp.gate.bias`). The MTP draft is dense and is in its own file | the safetensors index |
@@ -67,13 +67,13 @@ calls that repo "the record".
 | Term | Meaning |
 |---|---|
 | Workflow | One kind of work that a model does for you, for example the stock bot or the fast coding route. A workflow file describes it (§5.2) |
-| Adapter | The part of prune-kit that knows one checkpoint layout, one server and one chat template (§5.3) |
+| Adapter | The part of prune-moe-kit that knows one checkpoint layout, one server and one chat template (§5.3) |
 | K | The number of routed experts that a layer keeps |
 | Point | One candidate cut: a K, or a drop list with a different K in each layer |
 | Preflight | The quick check, level 0. It reads files only (§5.4) |
 | Probe | The longer check, level 1. It loads the model in one window and measures two or three points (§5.5) |
 | Gate | A test with a limit that a point must pass (§5.6) |
-| Window | A time in which prune-kit stops a worker, runs test boots, and restores the worker (§5.7) |
+| Window | A time in which prune-moe-kit stops a worker, runs test boots, and restores the worker (§5.7) |
 | Reference | The full model, measured in the same window as the points |
 
 ## 4. The blueprint: what the two prunes share
@@ -91,7 +91,7 @@ Both prunes ran these stages in this order. The last column shows where the mode
 | 7. Decision | You chose K 160, then MD | You chose K 208, against the NLL gate | Yours |
 | Extra work | A loader patch for a different K in each layer | A patch that keeps the expert count of the MTP draft | Adapter (server) |
 
-The record also gives rules. prune-kit applies each rule in code, and `BLUEPRINT.md` states it for a prune by hand.
+The record also gives rules. prune-moe-kit applies each rule in code, and `BLUEPRINT.md` states it for a prune by hand.
 
 - **R1. Use the workload's own rank.** With the public rank, DeepSeek K 192 fails. With the bot rank, K 176 costs
   +0.29%.
@@ -111,14 +111,14 @@ The record also gives rules. prune-kit applies each rule in code, and `BLUEPRINT
 ### 5.1 The commands
 
 ```
-prune-kit preflight MODEL [--workflow FILE]    level 0: files only, seconds, no GPU
-prune-kit data FILE                            build and check the sessions of a workflow
-prune-kit probe MODEL --workflow FILE          level 1: one window, two or three measured points
-prune-kit capture | rank | build | gate        the stages, one at a time
-prune-kit report RUN                           the decision report of a run
+prune-moe-kit preflight MODEL [--workflow FILE]    level 0: files only, seconds, no GPU
+prune-moe-kit data FILE                            build and check the sessions of a workflow
+prune-moe-kit probe MODEL --workflow FILE          level 1: one window, two or three measured points
+prune-moe-kit capture | rank | build | gate        the stages, one at a time
+prune-moe-kit report RUN                           the decision report of a run
 ```
 
-`MODEL` is a folder, a Hugging Face name in a local cache, or a model config of `model-benchmarks`. prune-kit
+`MODEL` is a folder, a Hugging Face name in a local cache, or a model config of `model-benchmarks`. prune-moe-kit
 searches `~/.cache/huggingface/hub`, each extra hub that the machine file names, and a plain path.
 
 The data of a workflow goes to `runs/data/<workflow>/`, because it does not depend on the model. Each command for a
@@ -181,7 +181,7 @@ refuses a message list with no user message, and the DeepSeek template accepts i
 
 The preflight reads `config.json` and the headers of the weight files. It loads no weights and needs no window.
 
-**What it prints.** This is the output of `prune-kit preflight thinkingmachines/Inkling-2-Mini --k 120 112 104 96`
+**What it prints.** This is the output of `prune-moe-kit preflight thinkingmachines/Inkling-2-Mini --k 120 112 104 96`
 on 2026-11-24. The tool gives the cut table that I first computed by hand from the header.
 
 ```
@@ -199,7 +199,7 @@ K 96       3.65 GiB    19%
 
 can the pipeline run?
   routed experts  yes      128 per layer, 8 per token
-  prune tool      no       prune-kit has no prune for the stacked layout yet
+  prune tool      no       prune-moe-kit has no prune for the stacked layout yet
   capture         unknown  not proven for this model type: test the capture flag of its server
   mask            info     possible: the router has a bias
   draft model     info     dense: no expert count to keep; test its acceptance
@@ -283,7 +283,7 @@ The report gives one row per point, with each gate and the evidence files. A poi
 - **Your decision:** `nll` fails, and `tools`, `tasks` and `judge` pass. This is the Qwen K 208 case.
 - **Fail:** each other case.
 
-prune-kit recommends a point. You choose it.
+prune-moe-kit recommends a point. You choose it.
 
 ### 5.7 The window runner
 
@@ -300,17 +300,17 @@ limit of the watch.
 - On each other failure, the runner does the safe action: the restore.
 - Each window runs in tmux under `job run`, with a `--desc` and a `--log`, so that it shows on the jobs page.
 
-### 5.8 What prune-kit reuses, and what it does not do
+### 5.8 What prune-moe-kit reuses, and what it does not do
 
 | Part | Project | Use |
 |---|---|---|
-| The weight tools, the capture and the gate | `dsv4-specialize` | Copied into prune-kit with their tests. That repo is a finished record and does not change |
+| The weight tools, the capture and the gate | `dsv4-specialize` | Copied into prune-moe-kit with their tests. That repo is a finished record and does not change |
 | The task gate | `agent-eval`, `agent-eval-heldout` | Called through `--endpoint` |
 | The tool-call suite and the speed | `model-benchmarks` | Called in external mode |
 | The jobs page | `machine-dash` | `job run`, `job step`, `job set --phase` |
 | The data of the local routes | `model-gateway` | The records folder is a data source |
 
-prune-kit does not do these things:
+prune-moe-kit does not do these things:
 
 - **The deploy.** The switch of a live worker stays a step by hand, with its own plan and your approval.
 - **Training.** A heal of a prune with LoRA belongs to `night-train` (its method M1).
@@ -326,7 +326,7 @@ Each pull request changes at most 400 lines and passes its tests alone. The line
 |---|---|---|
 | 1 | The repo: `pyproject.toml`, the command entry, `README.md`, and `BLUEPRINT.md` with the stages and the rules of §4 | 300 |
 | 2 | The model resolver and `inspect` of `st_moe`, with tests on small synthetic checkpoints | 350 |
-| 3 | `prune-kit preflight`: the memory table, the verdict list, the text and JSON output. Gate A for Qwen and Inkling | 350 |
+| 3 | `prune-moe-kit preflight`: the memory table, the verdict list, the text and JSON output. Gate A for Qwen and Inkling | 350 |
 | 4 | `inspect` of `dsv4_exl3` and of `dense`. Gate A for DeepSeek | 300 |
 
 Stop point: you decide if the work goes on.
@@ -338,14 +338,14 @@ one pull request holds at most 400 lines. The line counts are the real counts.
 |---|---|---|
 | 5 | The workflow file: the schema, the loader, the checks, and the cut that reaches the memory goal in the preflight | 359 |
 | 6 | The data format, the held-out split, the secret pass, and the data line of the preflight | 289 |
-| 7 | The data sources and `prune-kit data`: Claude Code transcripts, gateway records, repositories, sessions that exist | 346 |
+| 7 | The data sources and `prune-moe-kit data`: Claude Code transcripts, gateway records, repositories, sessions that exist | 346 |
 | 8 | `prune` and `check` of `st_moe`, for the per-expert and the stacked layout | 367 |
-| 8b | `prune-kit build`, the gate B script, and the new state of the prune tool in the preflight | 128 |
+| 8b | `prune-moe-kit build`, the gate B script, and the new state of the prune tool in the preflight | 128 |
 | 9 | The capture client, with no import from the bot repo | 266 |
-| 9b | The rank, the overlap of two halves, `prune-kit capture` and `prune-kit rank` | 262 |
-| 10 | The replay scorer: record, score, compare, `prune-kit gate`, and the gate C script | 393 |
+| 9b | The rank, the overlap of two halves, `prune-moe-kit capture` and `prune-moe-kit rank` | 262 |
+| 10 | The replay scorer: record, score, compare, `prune-moe-kit gate`, and the gate C script | 393 |
 | 11 | The window runner, the machine file and the window file, with dry-run tests | 381 |
-| 11b | `prune-kit window`, the dry run, and the example files | 139 |
+| 11b | `prune-moe-kit window`, the dry run, and the example files | 139 |
 | 12 | The test of gate C with no server, and this status | 63 |
 
 What stage II did not prove, because the proof needs a window:
@@ -354,7 +354,7 @@ What stage II did not prove, because the proof needs a window:
   proven: the rank of the capture of the Qwen prune is equal to the rank file of the record.
 - The window runner did not run a real window. The commands of `examples/machine-spark.yml` are not tested, and the
   end of the `up` hours of DeepSeek in that file is an assumption.
-- prune-kit has no new dependency for the capture: it reads the `.npy` array of the server with the standard
+- prune-moe-kit has no new dependency for the capture: it reads the `.npy` array of the server with the standard
   library. PyYAML is the only dependency.
 
 **Stage III: the measurements. Each run needs a window.** In work since 2026-11-25. The line counts are the real
@@ -362,12 +362,12 @@ counts.
 
 | PR | Content | Lines | State |
 |---|---|---|---|
-| 12 | `prune-kit probe`: the Qwen profile, the window file of a probe, a sample capture, the results of a window | 280 | Built |
+| 12 | `prune-moe-kit probe`: the Qwen profile, the window file of a probe, a sample capture, the results of a window | 280 | Built |
 | 12b | The probe report: the cost of each cut, the band, the line. The runner uses bash | 236 | Built |
 | 13 | The gates `tasks`, `speed` and `memory`, the verdict of a point, the full gate with the probe commands | 287 | Built, and proven in the gates window |
-| 13b | `prune-kit judge`: blind pairs, the sign test, the blind page | 249 | Built, and proven after the gates window |
+| 13b | `prune-moe-kit judge`: blind pairs, the sign test, the blind page | 249 | Built, and proven after the gates window |
 | 13c | The window runner: the stop of the whole server group, the cache release, a fast second try | 156 | Built, and proven in window 2 |
-| 13d | `prune-kit probe --flags` and `--env`: the draft model of a test server, for the gate `speed` | 43 | Built, and proven in the gates window |
+| 13d | `prune-moe-kit probe --flags` and `--env`: the draft model of a test server, for the gate `speed` | 43 | Built, and proven in the gates window |
 | 14 | The third model: the Inkling profile, a test server in a container, the loop fold of the rank, the replay settings of a profile, and gate D | 302 | Built, and proven in the Inkling window. Gate D passes |
 
 **The two real windows of 2026-11-25.** Both stopped Qwen and DeepSeek, because the full Qwen does not fit beside
@@ -427,7 +427,7 @@ and it restored both workers at the first try. The files are in
   gate `memory` needs the flags of the server that will run the cut.
 - **The draft model needs three things** on vLLM 0.33: the flag `--speculative-config`, the variable `PYTHONPATH`
   with the MTP patch of the record (a cut has fewer experts than its draft), and the KV pin of the live server
-  (1,965,377,034 bytes). `prune-kit probe --flags` and `--env` give them to each test server.
+  (1,965,377,034 bytes). `prune-moe-kit probe --flags` and `--env` give them to each test server.
 - **The time of a point.** Each point needed 24 minutes: 3 for the boot, 5 for the score, 9 for the 85 tasks, 6 for
   the 30 turns of the judge. The window stopped Qwen for 77 minutes and DeepSeek for 74 minutes. The judge on
   DeepSeek needed about 20 minutes for each cut, after the window.
@@ -446,8 +446,8 @@ split). Four windows stopped Qwen and DeepSeek, because Inkling needs 45 GiB wit
 | 4 | 17:56 to 20:26 | 8 points with no fault: the probe, then the full gate, with no restore between them |
 
 The runner restored both workers at the first try after each window. Window 4 is the files of two standard runs
-(`prune-kit probe`, and `prune-kit probe --tokens 100000000 --turns 60`), joined into one window file. The files are
-in `runs/thinkingmachines--Inkling-2-Mini/coding-record` (`probe` and `full`).
+(`prune-moe-kit probe`, and `prune-moe-kit probe --tokens 100000000 --turns 60`), joined into one window file. The
+files are in `runs/thinkingmachines--Inkling-2-Mini/coding-record` (`probe` and `full`).
 
 | Cut | Freed | Probe: 450,383 tokens, 20 turns | Band (90%) of the probe | Full gate: 3,974,504 tokens, 60 turns | Gates of the full gate |
 |---|---|---|---|---|---|
@@ -512,7 +512,7 @@ repair them, with no window.
 | PR | Content | State |
 |---|---|---|
 | H1 | The window runner: a stop of the runner (Ctrl-C, `kill`, the end of its terminal) stops the client and the test server and restores the workers. A point can name its results file. The machine file has the night-train hours of DeepSeek (00:30 each night) | Built. A real stop of a runner with stand-in servers restored its worker |
-| H2 | `prune-kit probe --full`: the probe and the full gate in one window, and a report that compares them. The gate `speed` has eight prompts and shows the change for the same prompts. A profile sets the limit of a recorded turn (Inkling: 1,600 tokens), and the report counts the turns that stopped at the limit | Built. The report gives the numbers of gate D from the files of the Inkling window. The gates window of Inkling ran with the new gate `speed`, the new limit and the results file of a point. No window ran with `--full` |
+| H2 | `prune-moe-kit probe --full`: the probe and the full gate in one window, and a report that compares them. The gate `speed` has eight prompts and shows the change for the same prompts. A profile sets the limit of a recorded turn (Inkling: 1,600 tokens), and the report counts the turns that stopped at the limit | Built. The report gives the numbers of gate D from the files of the Inkling window. The gates window of Inkling ran with the new gate `speed`, the new limit and the results file of a point. No window ran with `--full` |
 
 ## 7. The gates of the project
 
@@ -529,7 +529,7 @@ server, and layers that run three times.
 ## 8. Risks
 
 1. **The estimate comes from two models only.** The preflight states a range, and the probe measures. Each model that
-   runs through prune-kit adds a data point to the range.
+   runs through prune-moe-kit adds a data point to the range.
 2. **A server update breaks an adapter.** Each profile pins a server version, and the preflight compares it with
    the installed version.
 3. **A new workflow has no data.** Without recorded traffic, the rank is the rank of other work. The preflight
@@ -560,7 +560,7 @@ server, and layers that run three times.
 
 ## 10. Your decisions
 
-1. **The name and the place.** I used `~/Projects/prune-kit` as a new repo. Choose another name at any time before
+1. **The name and the place.** I used `~/Projects/prune-moe-kit` as a new repo. Choose another name at any time before
    PR 1.
 2. **The first scope.** My recommendation: MoE models on vLLM only.
 3. **The third model.** My recommendation: Inkling-2-Mini, because it is on disk and it differs from both earlier
