@@ -3,7 +3,7 @@
 # first three default cuts of the model.
 name: coding-record
 data:
-  sources: []                                    # the data exists: prune-kit data builds nothing for this file
+  sources: []                                    # the data exists: prune-moe-kit data builds nothing for this file
   folder: ~/Projects/dsv4-specialize/data/qwen-data
 memory: {context: 128000, margin_gib: 4}
 points: auto

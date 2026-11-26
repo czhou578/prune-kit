@@ -1,4 +1,4 @@
-"""Gate A (plans/PLAN_PRUNE_KIT.md §7): the preflight gives the numbers of the record, from the real checkpoints.
+"""Gate A (plans/PLAN_PRUNE_MOE_KIT.md §7): the preflight gives the numbers of the record, from the real checkpoints.
 
 A test is skipped on a machine that does not hold its checkpoint. No test loads weights.
 """
@@ -13,7 +13,7 @@ from prune_moe_kit.resolve import ModelNotFound, resolve
 from prune_moe_kit.weights import WeightsError, tensors
 
 GIB, MIB = 1 << 30, 1 << 20
-DSV4 = os.environ.get("PRUNE_KIT_DSV4", str(Path.home() / "Projects/DeepSeek-v4-Flash-One-DGX-Spark/data/tp1"))
+DSV4 = os.environ.get("PRUNE_MOE_KIT_DSV4", str(Path.home() / "Projects/DeepSeek-v4-Flash-One-DGX-Spark/data/tp1"))
 
 
 def real(model):

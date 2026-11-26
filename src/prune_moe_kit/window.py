@@ -1,4 +1,4 @@
-"""The window runner (plans/PLAN_PRUNE_KIT.md §5.7): run test servers in one window, and restore the machine.
+"""The window runner (plans/PLAN_PRUNE_MOE_KIT.md §5.7): run test servers in one window, and restore the machine.
 
 A machine file (YAML) holds the facts of one machine: each worker with its stop, start, health and metrics, the
 hours in which a worker must be up, and the memory limits of the watch. A window file (YAML) holds the points of one

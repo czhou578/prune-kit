@@ -1,22 +1,23 @@
-# prune-kit
+# prune-moe-kit
 
 One pipeline that prunes a local mixture-of-experts (MoE) model for one workflow.
 
-> **For MoE models only.** A MoE model sends each token to a few of its many experts. prune-kit removes the experts
-> that your work uses least. A dense model has no such experts, so prune-kit cannot prune it. The quick check tells
+> **For MoE models only.** A MoE model sends each token to a few of its many experts. prune-moe-kit removes the experts
+> that your work uses least. A dense model has no such experts, so prune-moe-kit cannot prune it. The quick check tells
 > you in less than a second: it prints `NO-GO` for a dense model.
 
 ## In simple words
 
-- A local MoE model holds experts that your work almost never uses. A prune removes them, and the model needs less memory.
+- A local MoE model holds experts that your work almost never uses. A prune removes them, and the model needs less
+  memory.
 - Two prunes by hand showed the method: DeepSeek V4 Flash (−27% of the loaded weights) and Qwen3.6-35B-A3B (−20%).
-- prune-kit turns that method into commands, so that the next model needs no new project.
+- prune-moe-kit turns that method into commands, so that the next model needs no new project.
 - A quick check comes first. It tells you how much memory each cut frees, and whether the pipeline can run.
-- prune-kit never changes a live model server, and it never chooses the cut for you.
+- prune-moe-kit never changes a live model server, and it never chooses the cut for you.
 
 ## Status
 
-Stages I, II and III of [the plan](plans/PLAN_PRUNE_KIT.md) are built, and each gate of the project passes. Two
+Stages I, II and III of [the plan](plans/PLAN_PRUNE_MOE_KIT.md) are built, and each gate of the project passes. Two
 models ran through the pipeline in real windows on 2026-11-25: Qwen3.6-35B-A3B and Inkling-2-Mini.
 [docs/reference.md](docs/reference.md) shows the state of each part.
 
@@ -36,11 +37,11 @@ compared with the full model of the same window. §6 of the plan has each table 
 - A prune of the experts frees a small part of the memory. The +3% limit of `nll` holds a cut of about 12% to 15%
   of the experts of these two models.
 - A cut can fail `nll` and still show no loss in `tasks` and `judge`. The report then says `your decision`.
-- prune-kit ran on two model types and on one machine. Each new model type needs a profile and a test.
+- prune-moe-kit ran on two model types and on one machine. Each new model type needs a profile and a test.
 
 ## Scope
 
-- **MoE models only.** prune-kit prunes the routed experts of a mixture-of-experts model. It does not prune a dense
+- **MoE models only.** prune-moe-kit prunes the routed experts of a mixture-of-experts model. It does not prune a dense
   model.
 - The weights must be safetensors files. A folder of GGUF files gets `NO-GO`.
 - It does not train, and it does not quantize.
@@ -77,30 +78,30 @@ uv sync
 Start with the quick check. It reads only the files of a model, and it loads no weights.
 
 ```bash
-uv run prune-kit preflight thinkingmachines/Inkling-2-Mini
+uv run prune-moe-kit preflight thinkingmachines/Inkling-2-Mini
 ```
 
 `MODEL` is a folder, a Hugging Face name in a local cache, or a part of such a name. The verdict is `GO`,
 `GO WITH WORK` with the parts that need work, or `NO-GO` for a model with no routed experts.
 
-`prune-kit stages` prints the stages of a prune. [docs/reference.md](docs/reference.md) describes each command.
+`prune-moe-kit stages` prints the stages of a prune. [docs/reference.md](docs/reference.md) describes each command.
 
 | Stage | Command | Question |
 |---|---|---|
-| preflight | `prune-kit preflight MODEL` | How much memory does each cut free, and can the pipeline run on this model? |
-| data | `prune-kit data FILE` | Which recorded sessions are the workflow, and which sessions are held out? |
-| capture | `prune-kit capture MODEL` | Which experts does the model route the workflow to? |
-| rank | `prune-kit rank CAPTURE` | Which experts of each layer does the workflow use least? |
+| preflight | `prune-moe-kit preflight MODEL` | How much memory does each cut free, and can the pipeline run on this model? |
+| data | `prune-moe-kit data FILE` | Which recorded sessions are the workflow, and which sessions are held out? |
+| capture | `prune-moe-kit capture MODEL` | Which experts does the model route the workflow to? |
+| rank | `prune-moe-kit rank CAPTURE` | Which experts of each layer does the workflow use least? |
 | screen | By hand | Which cuts pass a short replay? |
-| prune | `prune-kit build MODEL` | Does the pruned folder hold the kept experts, byte for byte? |
-| gates | `prune-kit gate`, `prune-kit judge` | Does the cut pass the replay, the tools, the tasks, the judge, the speed and the memory? |
+| prune | `prune-moe-kit build MODEL` | Does the pruned folder hold the kept experts, byte for byte? |
+| gates | `prune-moe-kit gate`, `prune-moe-kit judge` | Does the cut pass the replay, the tools, the tasks, the judge, the speed and the memory? |
 | decision | By hand | Which cut do you choose? |
 
 Two more commands run the measurements on test servers:
 
-- `prune-kit probe MODEL` writes the window file of a probe. A probe measures two or three cuts in one window, before
-  a full capture.
-- `prune-kit window FILE` runs a window file. A window is a time in which test servers run in place of a live model
+- `prune-moe-kit probe MODEL` writes the window file of a probe. A probe measures two or three cuts in one window,
+  before a full capture.
+- `prune-moe-kit window FILE` runs a window file. A window is a time in which test servers run in place of a live model
   server. The runner restores each live model server at the end.
 
 - CAUTION: A real window stops a live model server, and that server gives no answers until the restore. Run each

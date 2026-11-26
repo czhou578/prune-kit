@@ -1,4 +1,4 @@
-"""The gates ``tasks``, ``speed`` and ``memory`` (plans/PLAN_PRUNE_KIT.md §5.6), and the result of one point.
+"""The gates ``tasks``, ``speed`` and ``memory`` (plans/PLAN_PRUNE_MOE_KIT.md §5.6), and the result of one point.
 
 - ``tasks``: the tool-call suite of ``model-benchmarks`` (85 tasks) writes one JSON file for each test server. The
   gate compares the passed tasks of a point with those of the full model.

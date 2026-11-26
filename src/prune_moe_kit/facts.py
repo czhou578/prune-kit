@@ -1,4 +1,4 @@
-"""The facts of a checkpoint that the preflight needs (plans/PLAN_PRUNE_KIT.md §5.4), from its files only.
+"""The facts of a checkpoint that the preflight needs (plans/PLAN_PRUNE_MOE_KIT.md §5.4), from its files only.
 
 A routed expert is found by the name of its tensors, in one of two layouts:
 

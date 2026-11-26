@@ -1,4 +1,4 @@
-"""``st_moe``: the prune of a safetensors checkpoint with routed experts (plans/PLAN_PRUNE_KIT.md §5.3).
+"""``st_moe``: the prune of a safetensors checkpoint with routed experts (plans/PLAN_PRUNE_MOE_KIT.md §5.3).
 
 It covers the two layouts of ``facts.py``. In the per-expert layout, each expert of a layer has its own tensors
 (``...layers.<L>...experts.<E>.<rest>``). In the stacked layout, one tensor holds each expert of a layer in its first

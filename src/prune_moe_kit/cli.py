@@ -1,4 +1,4 @@
-"""Command line: prune-kit stages | preflight | data | capture | rank | build | gate | window | probe | judge."""
+"""Command line: prune-moe-kit stages | preflight | data | capture | rank | build | gate | window | probe | judge."""
 
 import argparse
 import json
@@ -27,7 +27,7 @@ def cmd_preflight(a) -> int:
         print(f"{e}\nverdict   NO-GO")
         return 1
     except (ModelNotFound, WeightsError, workflow.WorkflowError, OSError) as e:
-        print(f"prune-kit: {e}", file=sys.stderr)
+        print(f"prune-moe-kit: {e}", file=sys.stderr)
         return 2
     r = preflight.report(facts, a.k, preflight.available_bytes(), flow)
     print(json.dumps(r, indent=2) if a.json else preflight.text(r))
@@ -40,7 +40,7 @@ def cmd_data(a) -> int:
         flow = workflow.load(a.workflow)
         data = sessions.load(flow.folder / "sessions.jsonl") if a.stats else sources.build(flow)
     except (workflow.WorkflowError, OSError) as e:
-        print(f"prune-kit: {e}", file=sys.stderr)
+        print(f"prune-moe-kit: {e}", file=sys.stderr)
         return 2
     d = flow.data
     r = sessions.check(data, d["min_calibration_tokens"], d["min_held_out_turns"])
@@ -66,7 +66,7 @@ def cmd_capture(a) -> int:
         tools = _tools(flow.folder)
         served = a.served or capture.post(a.base_url, "/v1/models", None)["data"][0]["id"]
     except (ModelNotFound, WeightsError, workflow.WorkflowError, OSError, ValueError) as e:
-        print(f"prune-kit: {e}", file=sys.stderr)
+        print(f"prune-moe-kit: {e}", file=sys.stderr)
         return 2
     out = Path(a.out or Path("runs") / slug(folder) / flow.name / "capture.jsonl")
     failed = capture.run(a.base_url, served, data, tools, out, facts.max_experts, a.limit, json.loads(a.body),
@@ -82,7 +82,7 @@ def cmd_rank(a) -> int:
             rows = [json.loads(line) for line in f]
         ranked = rank.rank(rows)
     except (rank.RankError, OSError, ValueError) as e:
-        print(f"prune-kit: {e}", file=sys.stderr)
+        print(f"prune-moe-kit: {e}", file=sys.stderr)
         return 2
     out = Path(a.out or Path(a.capture).with_name("rank.json"))
     out.write_text(json.dumps(ranked))
@@ -102,7 +102,7 @@ def cmd_build(a) -> int:
             print(f"kept {r['kept']} tensors, dropped {r['dropped']}, wrote {r['bytes'] / 2**30:.2f} GiB to {a.out}")
         print(f"check: {st_moe.check(source, a.out)} tensors are equal to their source")
     except (ModelNotFound, st_moe.PruneError, OSError, ValueError) as e:
-        print(f"prune-kit: {e}", file=sys.stderr)
+        print(f"prune-moe-kit: {e}", file=sys.stderr)
         return 2
     return 0
 
@@ -136,7 +136,7 @@ def cmd_gate(a) -> int:
             more = {k: own[k] for k in ("end_think", "start_think", "decision_tokens") if k in own}
             failed = replay.score(a.base_url, served, data, tools, sessions.load(a.recorded), a.out, **more)
     except (workflow.WorkflowError, probe.ProbeError, OSError, ValueError, KeyError) as e:
-        print(f"prune-kit: {e}", file=sys.stderr)
+        print(f"prune-moe-kit: {e}", file=sys.stderr)
         return 2
     done = "recorded" if a.record else "scored"
     print(f"{done}  {a.out}" + (f": {failed} turns failed; start the command again" if failed else ""))
@@ -150,7 +150,7 @@ def cmd_window(a) -> int:
         release = window.load(a.window, {}).get("release", [])
         times = [datetime.fromisoformat(t) for t in (a.start_after, a.boot_by, a.restore_at)]
     except (window.WindowError, ValueError) as e:
-        print(f"prune-kit: {e}", file=sys.stderr)
+        print(f"prune-moe-kit: {e}", file=sys.stderr)
         return 2
     log = lambda line: print(f"{datetime.now():%F %T} {line}", flush=True)
     system = window.DryRun(log, machine, datetime.now()) if a.dry_run else None
@@ -186,10 +186,10 @@ def cmd_probe(a) -> int:
             plan = {"release": sorted({*plan["release"], *gate["release"]}), "points": plan["points"] + gate["points"]}
         path = probe.write(facts, flow, plan, ("probe", "full") if a.full else ("probe",))
     except (ModelNotFound, WeightsError, workflow.WorkflowError, window.WindowError, probe.ProbeError, OSError) as e:
-        print(f"prune-kit: {e}", file=sys.stderr)
+        print(f"prune-moe-kit: {e}", file=sys.stderr)
         return 2
     names = ", ".join(f"{p['name']} ({p['need_gib']:g} GiB)" for p in plan["points"])
-    run = f"prune-kit window {path} --machine {a.machine}"
+    run = f"prune-moe-kit window {path} --machine {a.machine}"
     print(f"window    {path}\npoints    {names}\n\nThe probe stops no worker. A window does: name each worker "
           f"with --stop, and set the three deadlines.\nFirst the dry run, then the same command with no --dry-run:"
           f"\n  {run} --stop WORKER --start-after TIME --boot-by TIME --restore-at TIME --dry-run")
@@ -206,15 +206,15 @@ def cmd_judge(a) -> int:
         result = judge.run(a.base_url, served, sessions.load(folder / "sessions.jsonl"), sessions.load(a.ref),
                            sessions.load(a.new), flow.gates["judge"]["turns"], a.out, a.page, json.loads(a.body))
     except (workflow.WorkflowError, OSError, ValueError, KeyError) as e:
-        print(f"prune-kit: {e}", file=sys.stderr)
+        print(f"prune-moe-kit: {e}", file=sys.stderr)
         return 2
     print(f"judge     {result['summary']}\nverdict   " + ("no loss that the test shows" if result["ok"] else "a loss"))
     return 0 if result["ok"] else 1
 
 
 def parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="prune-kit", description="Prune a local MoE model for one workflow.")
-    p.add_argument("--version", action="version", version=f"prune-kit {__version__}")
+    p = argparse.ArgumentParser(prog="prune-moe-kit", description="Prune a local MoE model for one workflow.")
+    p.add_argument("--version", action="version", version=f"prune-moe-kit {__version__}")
     sub = p.add_subparsers(dest="command", required=True)
     s = sub.add_parser("stages", help="list the stages of a prune and the command of each stage")
     s.set_defaults(run=cmd_stages)
@@ -243,7 +243,7 @@ def parser() -> argparse.ArgumentParser:
     c.add_argument("--hub", action="append", default=[], metavar="DIR", help="one more cache folder to search")
     c.set_defaults(run=cmd_capture)
     r = sub.add_parser("rank", help="order the experts of each layer by their use in a capture")
-    r.add_argument("capture", metavar="CAPTURE", help="the counts of prune-kit capture")
+    r.add_argument("capture", metavar="CAPTURE", help="the counts of prune-moe-kit capture")
     r.add_argument("--out", metavar="FILE", help="the rank file (default: rank.json beside the capture)")
     r.add_argument("--k", type=int, nargs="+", metavar="K", help="the cuts of the table")
     r.set_defaults(run=cmd_rank)

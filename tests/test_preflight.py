@@ -22,7 +22,7 @@ def test_known_model_type_needs_only_the_prune_tool(qwen_like):
     assert states(qwen_like) == {"routed experts": "yes", "prune tool": "yes", "capture": "yes", "mask": "info",
                                  "draft model": "yes"}
     r = preflight.report(inspect(qwen_like))
-    assert r["verdict"] == "GO" and "prune-kit build: it gives the folder of the prune by hand" in preflight.text(r)
+    assert r["verdict"] == "GO" and "prune-moe-kit build: it gives the folder of the prune by hand" in preflight.text(r)
 
 
 def test_a_model_type_that_ran_through_prune_moe_kit_is_proven(inkling_like):

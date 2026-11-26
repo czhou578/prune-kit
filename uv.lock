@@ -39,7 +39,7 @@ wheels = [
 ]
 
 [[package]]
-name = "prune-kit"
+name = "prune-moe-kit"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

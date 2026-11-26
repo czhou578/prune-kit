@@ -1,5 +1,5 @@
 # The workflow of the Qwen prune: the fast coding route of the gateway.
-# Use: prune-kit preflight unsloth/Qwen3.6-35B-A3B-NVFP4-Fast --workflow examples/coding-fast-route.yml
+# Use: prune-moe-kit preflight unsloth/Qwen3.6-35B-A3B-NVFP4-Fast --workflow examples/coding-fast-route.yml
 name: coding-fast-route
 data:
   sources:

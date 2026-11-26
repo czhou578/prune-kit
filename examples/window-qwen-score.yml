@@ -1,4 +1,4 @@
-# A window file for `prune-kit window`: score the full Qwen and the K 208 folder in one window (rule R3).
+# A window file for `prune-moe-kit window`: score the full Qwen and the K 208 folder in one window (rule R3).
 # Each point is one test server on the test port 8890. A window never uses a live port.
 points:
   - name: full
@@ -6,11 +6,11 @@ points:
     boot: vllm serve unsloth/Qwen3.6-35B-A3B-NVFP4-Fast --host 127.0.0.1 --port 8890 --served-model-name test
     health: http://127.0.0.1:8890/health
     clients:
-      - prune-kit gate --record --workflow examples/coding-fast-route.yml --base-url http://127.0.0.1:8890 --out runs/window/recorded.jsonl
-      - prune-kit gate --score --workflow examples/coding-fast-route.yml --base-url http://127.0.0.1:8890 --recorded runs/window/recorded.jsonl --out runs/window/score-full.jsonl
+      - prune-moe-kit gate --record --workflow examples/coding-fast-route.yml --base-url http://127.0.0.1:8890 --out runs/window/recorded.jsonl
+      - prune-moe-kit gate --score --workflow examples/coding-fast-route.yml --base-url http://127.0.0.1:8890 --recorded runs/window/recorded.jsonl --out runs/window/score-full.jsonl
   - name: k208
     need_gib: 30
     boot: vllm serve runs/qwen-k208 --host 127.0.0.1 --port 8890 --served-model-name test
     health: http://127.0.0.1:8890/health
     clients:
-      - prune-kit gate --score --workflow examples/coding-fast-route.yml --base-url http://127.0.0.1:8890 --recorded runs/window/recorded.jsonl --out runs/window/score-k208.jsonl
+      - prune-moe-kit gate --score --workflow examples/coding-fast-route.yml --base-url http://127.0.0.1:8890 --recorded runs/window/recorded.jsonl --out runs/window/score-k208.jsonl

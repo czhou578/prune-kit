@@ -1,5 +1,5 @@
 [project]
-name = "prune-kit"
+name = "prune-moe-kit"
 version = "0.1.0"
 description = "One pipeline that prunes a local mixture-of-experts (MoE) model for one workflow."
 readme = "README.md"
@@ -11,10 +11,10 @@ dependencies = [
 ]
 
 [project.urls]
-Repository = "https://github.com/czhou578/prune-kit"
+Repository = "https://github.com/czhou578/prune-moe-kit"
 
 [project.scripts]
-prune-kit = "prune_moe_kit.cli:main"
+prune-moe-kit = "prune_moe_kit.cli:main"
 
 [build-system]
 requires = ["hatchling"]

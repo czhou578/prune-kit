@@ -53,7 +53,7 @@ def test_a_profile_with_a_container_gets_absolute_paths_its_mounts_and_a_down_co
     full, k3 = probe.plan(facts, flow(tmp_path, "[3]"), profile, {})["points"]
     model, run = qwen_like.resolve(), (tmp_path / "runs" / qwen_like.name / "w/probe").resolve()
     for point, served in ((full, model), (k3, run / "k3")):
-        assert point["down"] == "docker rm -f prune-kit-probe"
+        assert point["down"] == "docker rm -f prune-moe-kit-probe"
         assert f" -v {model}:{model}:ro -v {run}:{run}:ro " in point["boot"]
         assert f" {served} --host 127.0.0.1 --port 8890 --served-model-name probe " in point["boot"]
         assert """--limit-mm-per-prompt '{"image": 0}'""" in point["boot"]
